@@ -1,0 +1,219 @@
+"""gllm CLI.
+
+Reads stdin if piped, takes an optional positional prompt, prints model text
+to stdout, logs to stderr. Supports --json and --schema for structured output.
+
+Examples:
+    echo "rewrite this in haiku" | gllm
+    gllm "what is 2+2?"
+    cat file.txt | gllm "summarize this"
+    gllm -m claude-opus-4-7 "..."
+    gllm --schema ./schema.json "extract from: $TEXT"
+    gllm --json "list 3 capitals as {country: capital}"
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+from .domain import Request
+from .ports import LLMProvider
+from .routing import provider_for
+
+DEFAULT_MODEL = "gemini-3-flash-preview"
+CONFIG_ENV_PATH = Path.home() / ".config" / "gllm" / ".env"
+
+
+def _load_user_env_file(path: Path) -> None:
+    """Read KEY=value lines from `path` into os.environ (without overriding
+    anything already set). Silently no-ops if the file is missing."""
+    if not path.is_file():
+        return
+    try:
+        for raw in path.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and k not in os.environ:
+                os.environ[k] = v
+    except OSError:
+        pass
+
+
+def _read_stdin_if_piped() -> str | None:
+    if sys.stdin.isatty():
+        return None
+    data = sys.stdin.read()
+    return data if data else None
+
+
+def _read_text_arg(value: str) -> str:
+    """`@path` means read from a file; otherwise the literal string."""
+    if value.startswith("@"):
+        return Path(value[1:]).read_text()
+    return value
+
+
+def _load_schema(value: str) -> dict:
+    """Schema may be inline JSON or `@path/to/schema.json` or a bare path
+    ending in .json. Returns the parsed dict."""
+    if value.startswith("@"):
+        return json.loads(Path(value[1:]).read_text())
+    stripped = value.lstrip()
+    if stripped.startswith("{"):
+        return json.loads(value)
+    return json.loads(Path(value).read_text())
+
+
+def _build_provider(name: str) -> LLMProvider:
+    if name == "anthropic":
+        from .adapters.anthropic import AnthropicProvider
+
+        return AnthropicProvider()
+    if name == "openai":
+        from .adapters.openai import OpenAIProvider
+
+        return OpenAIProvider()
+    if name == "gemini":
+        from .adapters.gemini import GeminiProvider
+
+        return GeminiProvider()
+    raise ValueError(f"unknown provider: {name}")
+
+
+def _parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="gllm",
+        description="Pipe-friendly LLM CLI. Reads stdin if piped, prints to stdout.",
+    )
+    p.add_argument(
+        "prompt",
+        nargs="?",
+        default=None,
+        help="Optional positional prompt. Combined with stdin if both are given.",
+    )
+    p.add_argument(
+        "-m",
+        "--model",
+        default=os.environ.get("GLLM_MODEL", DEFAULT_MODEL),
+        help=f"Model name. Default: $GLLM_MODEL or {DEFAULT_MODEL}.",
+    )
+    p.add_argument(
+        "-s",
+        "--system",
+        default=None,
+        help="System prompt. Use @path to load from file.",
+    )
+    p.add_argument(
+        "-j",
+        "--json",
+        action="store_true",
+        help="Ask the model for JSON output (no schema).",
+    )
+    p.add_argument(
+        "--schema",
+        default=None,
+        help="JSON Schema for structured output. Inline JSON, @path, or a "
+        "path ending in .json. Implies --json.",
+    )
+    p.add_argument(
+        "-t",
+        "--temperature",
+        type=float,
+        default=None,
+    )
+    p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4096,
+    )
+    p.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Log provider/model/token usage to stderr.",
+    )
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    _load_user_env_file(CONFIG_ENV_PATH)
+
+    args = _parser().parse_args(argv)
+
+    stdin_text = _read_stdin_if_piped()
+    positional = args.prompt
+
+    if positional and stdin_text:
+        prompt = f"{positional}\n\n{stdin_text}"
+    elif positional:
+        prompt = positional
+    elif stdin_text:
+        prompt = stdin_text
+    else:
+        print(
+            "gllm: no prompt. Pass one as an argument or pipe text via stdin.",
+            file=sys.stderr,
+        )
+        return 2
+
+    system = _read_text_arg(args.system) if args.system else None
+
+    schema = None
+    if args.schema:
+        try:
+            schema = _load_schema(args.schema)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"gllm: --schema: {e}", file=sys.stderr)
+            return 2
+
+    request = Request(
+        prompt=prompt,
+        system=system,
+        model=args.model,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        schema=schema,
+        json_mode=args.json or schema is not None,
+    )
+
+    provider_name = provider_for(args.model)
+
+    if args.verbose:
+        print(
+            f"gllm: provider={provider_name} model={args.model} "
+            f"json={request.json_mode} schema={'yes' if schema else 'no'}",
+            file=sys.stderr,
+        )
+
+    try:
+        provider = _build_provider(provider_name)
+        response = provider.generate(request)
+    except Exception as e:
+        print(f"gllm: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+
+    sys.stdout.write(response.text)
+    if not response.text.endswith("\n"):
+        sys.stdout.write("\n")
+
+    if args.verbose:
+        print(
+            f"gllm: tokens in={response.input_tokens} out={response.output_tokens}",
+            file=sys.stderr,
+        )
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
