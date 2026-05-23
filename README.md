@@ -20,11 +20,12 @@ uv sync
 `gllm` looks for keys in two places, in this order:
 
 1. Process environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`).
-2. `~/.config/gllm/.env` — simple `KEY=value` lines.
+2. A hardcoded `.env` file at `/home/emil/prog/prj/bebri-chat/.env`
+   (temporary — see `.llm-memory/IDEAS-key-loading-secret-managers.md`).
 
-Drop your keys in `~/.config/gllm/.env` with `chmod 600` and forget about it,
-or export them in your shell — both work. The file path is deliberately *not*
-the cwd, so `gllm` behaves the same no matter where you pipe to it from.
+Long-term plan: move to `~/.config/gllm/.env` (chmod 600) or a secret-manager
+integration. For now, the path is hardcoded so `gllm` reuses the keys that
+already live in the `bebri-chat` checkout.
 
 ## Usage
 

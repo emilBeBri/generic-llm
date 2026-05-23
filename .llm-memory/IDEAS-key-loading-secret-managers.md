@@ -2,13 +2,19 @@
 
 Not built yet. Drop here for when it matters.
 
-## Current behavior (v1)
+## Current behavior (v1, TEMPORARY)
 
 `gllm` resolves provider API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) in this order:
 1. Process environment
-2. `~/.config/gllm/.env` (key=value lines; chmod 600 recommended)
+2. **Hardcoded path: `/home/emil/prog/prj/bebri-chat/.env`** (see `cli.py:CONFIG_ENV_PATH`)
 
-Rationale: no `.zshrc` exports needed, so keys aren't broadcast to every child process the user ever spawns. Loading is gllm-local — only the gllm process and its children see the resolved keys.
+**This hardcode is deliberate stop-gap, not the design.** Done so `gllm` immediately reuses the keys already in the bebri-chat checkout, without having to copy them into a second location. Replace it when:
+- `~/.config/gllm/.env` is set up (the originally-designed location), or
+- A real secret-manager integration lands (see below).
+
+If the hardcoded path doesn't exist, `_load_user_env_file` silently no-ops — `gllm` then falls through to whatever's in the process env. So the hack is harmless on machines where the path is missing, but it should still be removed before this code ships anywhere outside emil's laptop.
+
+Rationale for the *originally designed* approach: no `.zshrc` exports needed, so keys aren't broadcast to every child process the user ever spawns. Loading is gllm-local — only the gllm process and its children see the resolved keys.
 
 ## Future: `--keys-from` flag
 

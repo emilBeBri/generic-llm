@@ -25,7 +25,9 @@ from .ports import LLMProvider
 from .routing import provider_for
 
 DEFAULT_MODEL = "gemini-3-flash-preview"
-CONFIG_ENV_PATH = Path.home() / ".config" / "gllm" / ".env"
+# Temporary: keys live in the bebri-chat .env until we wire up a real
+# secret-loading strategy. See .llm-memory/IDEAS-key-loading-secret-managers.md.
+CONFIG_ENV_PATH = Path("/home/emil/prog/prj/bebri-chat/.env")
 
 
 def _load_user_env_file(path: Path) -> None:
