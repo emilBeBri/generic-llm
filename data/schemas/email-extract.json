@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "description": "Structured metadata extracted from an email body.",
+  "properties": {
+    "from_name": {
+      "type": "string",
+      "description": "Sender's full name. Empty string if unknown."
+    },
+    "from_email": {
+      "type": "string",
+      "description": "Sender's email address. Empty string if not present in the text."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Subject line, or a one-sentence synopsis if no subject is present."
+    },
+    "intent": {
+      "type": "string",
+      "enum": ["question", "request", "complaint", "thanks", "fyi", "spam", "other"],
+      "description": "What the sender wants from the recipient."
+    },
+    "urgency": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "action_required": {
+      "type": "boolean",
+      "description": "True if the email requires a reply or follow-up action."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-sentence summary of the email's content."
+    }
+  },
+  "required": ["from_name", "from_email", "subject", "intent", "urgency", "action_required", "summary"],
+  "additionalProperties": false
+}

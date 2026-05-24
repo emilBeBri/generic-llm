@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "description": "A Conventional Commits message, decomposed into its parts.",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["feat", "fix", "refactor", "perf", "test", "docs", "chore", "build", "ci"]
+    },
+    "scope": {
+      "type": "string",
+      "description": "Optional module/area scope. Empty string if no scope applies."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Imperative-mood summary, under 60 chars, no trailing period."
+    },
+    "body": {
+      "type": "string",
+      "description": "Why-not-what explanation, wrapped at 72 cols. Empty string if the diff is self-explanatory."
+    },
+    "breaking_change": {
+      "type": "string",
+      "description": "Description of any public-API break. Empty string if non-breaking."
+    },
+    "affected_paths": {
+      "type": "array",
+      "description": "Top-level files or directories touched by the change.",
+      "items": {"type": "string"}
+    }
+  },
+  "required": ["type", "scope", "subject", "body", "breaking_change", "affected_paths"],
+  "additionalProperties": false
+}
