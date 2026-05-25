@@ -4,8 +4,9 @@ A minimal Unix-pipe-friendly CLI for calling LLMs. Reads stdin if piped, takes
 an optional positional prompt, prints the model's response to stdout. Errors
 and verbose logs go to stderr.
 
-Supports Anthropic (Claude), OpenAI (GPT / o-series / gpt-5), and Google
-(Gemini). Provider is selected from the model name.
+Supports Anthropic (Claude), OpenAI (GPT / o-series / gpt-5), Google (Gemini),
+DeepSeek, xAI (Grok), and Azure AI Foundry (OpenAI + Anthropic). Provider is
+selected from the model name — see [Model routing](#model-routing).
 
 ## Install
 
@@ -19,13 +20,60 @@ uv sync
 
 `gllm` looks for keys in two places, in this order:
 
-1. Process environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`).
+1. Process environment.
 2. A hardcoded `.env` file at `/home/emil/prog/prj/bebri-chat/.env`
    (temporary — see `.llm-memory/IDEAS-key-loading-secret-managers.md`).
+
+Per provider:
+
+| Provider | Key(s) | Other env |
+|---|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` | |
+| OpenAI | `OPENAI_API_KEY` | |
+| Gemini | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) | |
+| DeepSeek | `DEEPSEEK_API_KEY` | |
+| xAI (Grok) | `XAI_API_KEY` | |
+| Azure OpenAI | `AZURE_OPENAI_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` |
+| Azure Anthropic | `AZURE_ANTHROPIC_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` |
 
 Long-term plan: move to `~/.config/gllm/.env` (chmod 600) or a secret-manager
 integration. For now, the path is hardcoded so `gllm` reuses the keys that
 already live in the `bebri-chat` checkout.
+
+## Model routing
+
+Provider is inferred from the model name. The Azure Foundry `-dev` suffix is
+the explicit Azure marker and is checked first.
+
+| Model name matches | Provider |
+|---|---|
+| ends in `-dev`, contains `claude` | `azure_anthropic` |
+| ends in `-dev` (otherwise) | `azure_openai` |
+| contains `claude` | `anthropic` |
+| contains `gemini` | `gemini` |
+| contains `deepseek` | `deepseek` |
+| contains `grok` | `grok` |
+| anything else (`gpt-*`, `o1/o3/o4`, `codex`) | `openai` |
+
+```sh
+gllm -m deepseek-v4-pro "..."
+gllm -m grok-4.3 "..."
+gllm -m gpt-5.1-dev "..."             # Azure OpenAI (Foundry MaaS)
+gllm -m claude-opus-4-7-dev "..."     # Azure Anthropic (Foundry)
+```
+
+### WORK mode (Azure Anthropic forced thinking)
+
+Set `WORK=1` (or `WORK_ENV=1`) to force maximum extended thinking on Azure
+Anthropic `-dev` models — adaptive thinking for Claude 4.6/4.7, a fixed budget
+for 4.5 and older. Azure Foundry doesn't expose Anthropic's `output_config`
+effort control, so this is the only thinking knob. It also bumps `max_tokens`
+and drops `temperature` (extended thinking pins it to 1). No effect on any
+other provider.
+
+```sh
+WORK=1 gllm -m claude-opus-4-7-dev "think hard about this"
+```
 
 ## Usage
 
@@ -140,7 +188,7 @@ and Gemini without per-provider variants. Reflect this in your own schemas.
 
 | Setting | Default |
 |---|---|
-| Model | `$GLLM_MODEL`, else `gemini-3-flash-preview` |
+| Model | `$GLLM_MODEL`, else `deepseek-v4-flash` |
 | Max tokens | 4096 |
 | Temperature | provider default |
 
@@ -149,11 +197,17 @@ and Gemini without per-provider variants. Reflect this in your own schemas.
 ```
 src/gllm/
 ├── cli.py              # argparse + stdin/stdout
+├── config.py           # WORK / WORK_ENV toggle
 ├── domain.py           # Request, Response
 ├── ports.py            # LLMProvider ABC
 ├── routing.py          # model-name → provider
 └── adapters/
-    ├── anthropic.py    # output_config.format json_schema
-    ├── openai.py       # Responses + Chat Completions, json_schema
-    └── gemini.py       # response_json_schema
+    ├── _capabilities.py # OpenAI Responses-vs-Chat dispatch (shared)
+    ├── anthropic.py     # output_config.format json_schema
+    ├── openai.py        # Responses + Chat Completions, json_schema
+    ├── gemini.py        # response_json_schema
+    ├── deepseek.py      # OpenAI-compatible @ api.deepseek.com
+    ├── grok.py          # OpenAIProvider subclass @ api.x.ai/v1
+    ├── azure_openai.py  # OpenAIProvider subclass @ Foundry MaaS
+    └── azure_anthropic.py # AnthropicFoundry + WORK-mode thinking
 ```

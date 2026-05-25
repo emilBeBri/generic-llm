@@ -24,7 +24,7 @@ from .domain import Request
 from .ports import LLMProvider
 from .routing import provider_for
 
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "deepseek-v4-flash"
 # Temporary: keys live in the bebri-chat .env until we wire up a real
 # secret-loading strategy. See .llm-memory/IDEAS-key-loading-secret-managers.md.
 CONFIG_ENV_PATH = Path("/home/emil/prog/prj/bebri-chat/.env")
@@ -89,6 +89,22 @@ def _build_provider(name: str) -> LLMProvider:
         from .adapters.gemini import GeminiProvider
 
         return GeminiProvider()
+    if name == "deepseek":
+        from .adapters.deepseek import DeepSeekProvider
+
+        return DeepSeekProvider()
+    if name == "grok":
+        from .adapters.grok import GrokProvider
+
+        return GrokProvider()
+    if name == "azure_openai":
+        from .adapters.azure_openai import AzureOpenAIProvider
+
+        return AzureOpenAIProvider()
+    if name == "azure_anthropic":
+        from .adapters.azure_anthropic import AzureAnthropicProvider
+
+        return AzureAnthropicProvider()
     raise ValueError(f"unknown provider: {name}")
 
 

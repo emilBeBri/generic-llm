@@ -21,26 +21,33 @@ from openai import OpenAI
 
 from ..domain import Request, Response
 from ..ports import LLMProvider
-
-_RESPONSES_PREFIXES = ("o1", "o3", "o4", "gpt-5", "codex")
-
-
-def _use_responses_api(model: str) -> bool:
-    m = model.lower()
-    return any(m.startswith(p) for p in _RESPONSES_PREFIXES)
+from ._capabilities import use_responses_api
 
 
 class OpenAIProvider(LLMProvider):
     name = "openai"
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        base_url: str | None = None,
+        name: str | None = None,
+    ):
+        # `base_url`/`name` are the override surface for OpenAI-compatible
+        # backends (xAI Grok, Azure Foundry) that subclass this provider.
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
             raise RuntimeError("OPENAI_API_KEY is not set")
-        self.client = OpenAI(api_key=key, max_retries=3)
+        client_kwargs: dict = {"api_key": key, "max_retries": 3}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        self.client = OpenAI(**client_kwargs)
+        if name:
+            self.name = name
 
     def generate(self, request: Request) -> Response:
-        if _use_responses_api(request.model):
+        if use_responses_api(request.model):
             return self._generate_responses(request)
         return self._generate_chat(request)
 
