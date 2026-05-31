@@ -122,7 +122,7 @@ class AzureAnthropicProvider(LLMProvider):
         is suppressed. 4.5 and others use a fixed budget.
         """
         m = model.lower()
-        if "4-6" in m or "4-7" in m:
+        if "4-6" in m or "4-7" in m or "4-8" in m:
             kwargs["max_tokens"] = 64000
             kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
         elif "4-5" in m:

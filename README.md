@@ -59,8 +59,23 @@ the explicit Azure marker and is checked first.
 gllm -m deepseek-v4-pro "..."
 gllm -m grok-4.3 "..."
 gllm -m gpt-5.1-dev "..."             # Azure OpenAI (Foundry MaaS)
-gllm -m claude-opus-4-7-dev "..."     # Azure Anthropic (Foundry)
+gllm -m claude-opus-4-8-dev "..."     # Azure Anthropic (Foundry)
 ```
+
+### Known models
+
+Routing is purely prefix-based, so new models in these families Just Work without
+a code change. The set below mirrors what `bebri-chat` exercises today:
+
+| Provider | Models |
+|---|---|
+| Anthropic | `claude-opus-4-5/6/7/8`, `claude-sonnet-4-5/6`, `claude-haiku-4-5/6` |
+| OpenAI | `gpt-5{,-mini,-nano,-pro}`, `gpt-5.1{,-codex,-chat-latest}`, `gpt-5.2{,-pro,-chat-latest}`, `gpt-5-codex`, `codex-mini-latest`, `gpt-4.1{,-mini,-nano}`, `gpt-4o{,-mini}`, `o1{,-pro,-mini}`, `o3{,-pro,-mini,-deep-research}`, `o4-mini{,-deep-research}` |
+| Gemini | `gemini-3-pro-preview`, `gemini-3-flash`, `gemini-3-flash-lite`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `gemini-3-deep-think-preview` |
+| DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
+| xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309`, `grok-build-0.1` |
+| Azure OpenAI (`-dev`) | `gpt-5{,-mini}-dev`, `gpt-5.1-dev`, `gpt-5.2-dev`, `gpt-5.4{,-pro}-dev`, `gpt-5.5-dev`, `o3-dev` |
+| Azure Anthropic (`-dev`) | `claude-opus-4-5/6/7/8-dev` |
 
 ### WORK mode (Azure Anthropic forced thinking)
 
@@ -72,7 +87,7 @@ and drops `temperature` (extended thinking pins it to 1). No effect on any
 other provider.
 
 ```sh
-WORK=1 gllm -m claude-opus-4-7-dev "think hard about this"
+WORK=1 gllm -m claude-opus-4-8-dev "think hard about this"
 ```
 
 ## Usage
@@ -88,7 +103,7 @@ gllm "what is 2 + 2?"
 cat README.md | gllm "summarize this in one sentence"
 
 # Pick a model (provider auto-detected from the name)
-gllm -m claude-opus-4-7 "explain monads"
+gllm -m claude-opus-4-8 "explain monads"
 gllm -m gpt-5-nano "..."
 gllm -m gemini-3-flash-preview "..."
 

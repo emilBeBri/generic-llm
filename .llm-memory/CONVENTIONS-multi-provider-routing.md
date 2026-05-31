@@ -30,6 +30,10 @@ DeepSeek, Grok, and Azure OpenAI all speak the OpenAI wire protocol. Rather than
 
 `_capabilities.use_responses_api` is the single source of truth for Responses-vs-Chat dispatch, shared by `openai.py` and `azure_openai.py` (via inheritance). Unknown slugs default to Responses (the strict superset).
 
+## Anthropic family thinking — 4-6 / 4-7 / 4-8 are one bucket
+
+`azure_anthropic._force_work_env_thinking` treats Claude **Opus 4-6, 4-7, and 4-8** identically: `thinking={type:"adaptive", display:"summarized"}` with `max_tokens=64000`. 4-5 stays on fixed-budget enabled thinking. Mirrors bebri-chat `anthropic_adapter.py:366` exactly. When a new family lands (4-9, 5-x), add it to that conditional. `display:"summarized"` is mandatory on 4-7+ (default flipped to `omitted`, which suppresses streaming thinking deltas — would make the terminal look hung).
+
 ## Related
 - [[GOTCHA-azure-foundry-constraints]] — what the two Azure adapters have to work around (no `output_config`, WORK-mode thinking, endpoint rewriting).
 - [[CONVENTIONS-schemas-and-instructions]] — the json_schema strict-mode convention these adapters consume.
