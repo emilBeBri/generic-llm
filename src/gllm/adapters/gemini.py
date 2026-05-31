@@ -49,9 +49,19 @@ class GeminiProvider(LLMProvider):
 
         config = types.GenerateContentConfig(**config_args)
 
+        if request.attachments:
+            contents = [
+                types.Part.from_bytes(data=a.data, mime_type=a.mime_type)
+                for a in request.attachments
+            ]
+            # Gemini SDK accepts a trailing string as a text Part.
+            contents.append(request.prompt)
+        else:
+            contents = request.prompt
+
         resp = self.client.models.generate_content(
             model=request.model,
-            contents=request.prompt,
+            contents=contents,
             config=config,
         )
 

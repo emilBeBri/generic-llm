@@ -11,6 +11,20 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class Attachment:
+    """A binary input (image, PDF) attached to a request.
+
+    `source_label` is the path the bytes came from, or `"<stdin>"` when read
+    from `-f -`. Used in error messages and as a fallback filename for
+    providers (e.g. OpenAI's `input_file` wants a filename).
+    """
+
+    data: bytes
+    mime_type: str
+    source_label: str
+
+
+@dataclass(frozen=True)
 class Request:
     prompt: str
     system: str | None = None
@@ -24,6 +38,9 @@ class Request:
     # a `response_mime_type=application/json` hint. For Anthropic (no native
     # json-object mode) we add an instruction prefix.
     json_mode: bool = False
+    # Binary attachments (images, PDFs). Each adapter uses its provider's
+    # native attachment API; providers without one raise on non-empty.
+    attachments: tuple[Attachment, ...] = ()
 
 
 @dataclass

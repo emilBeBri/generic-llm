@@ -11,12 +11,45 @@ nothing else.
 
 from __future__ import annotations
 
+import base64
 import os
 
 import anthropic
 
-from ..domain import Request, Response
+from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
+
+
+def _anthropic_content(prompt: str, attachments: tuple[Attachment, ...]) -> list[dict] | str:
+    """Build the `content` value for the user message.
+
+    With no attachments: return the prompt as a plain string (the historical
+    shape — keeps the wire format unchanged for the simple case).
+    With attachments: return a list of content blocks, attachments first so
+    the trailing text reads as the instruction.
+    """
+    if not attachments:
+        return prompt
+    blocks: list[dict] = []
+    for a in attachments:
+        b64 = base64.b64encode(a.data).decode()
+        if a.mime_type.startswith("image/"):
+            blocks.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": a.mime_type, "data": b64},
+            })
+        elif a.mime_type == "application/pdf":
+            blocks.append({
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
+            })
+        else:
+            raise RuntimeError(
+                f"anthropic adapter cannot encode attachment {a.source_label!r} "
+                f"(mime {a.mime_type}); only images and application/pdf are supported."
+            )
+    blocks.append({"type": "text", "text": prompt})
+    return blocks
 
 
 class AnthropicProvider(LLMProvider):
@@ -29,10 +62,11 @@ class AnthropicProvider(LLMProvider):
         self.client = anthropic.Anthropic(api_key=key, max_retries=3)
 
     def generate(self, request: Request) -> Response:
+        content = _anthropic_content(request.prompt, request.attachments)
         kwargs: dict = {
             "model": request.model,
             "max_tokens": request.max_tokens,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": [{"role": "user", "content": content}],
         }
         if request.system:
             kwargs["system"] = request.system

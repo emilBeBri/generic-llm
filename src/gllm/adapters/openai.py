@@ -15,13 +15,74 @@ Plain JSON mode (no schema):
 
 from __future__ import annotations
 
+import base64
 import os
+from pathlib import Path
 
 from openai import OpenAI
 
-from ..domain import Request, Response
+from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ._capabilities import use_responses_api
+
+
+def _responses_input(prompt: str, attachments: tuple[Attachment, ...]):
+    """Build the `input` arg for client.responses.create.
+
+    No attachments -> the bare prompt string (historical shape, unchanged
+    wire format for the simple case).
+    With attachments -> a single user message with structured content parts.
+    """
+    if not attachments:
+        return prompt
+    parts: list[dict] = []
+    for a in attachments:
+        b64 = base64.b64encode(a.data).decode()
+        if a.mime_type.startswith("image/"):
+            parts.append({
+                "type": "input_image",
+                "image_url": f"data:{a.mime_type};base64,{b64}",
+            })
+        elif a.mime_type == "application/pdf":
+            filename = Path(a.source_label).name or "file.pdf"
+            parts.append({
+                "type": "input_file",
+                "filename": filename,
+                "file_data": f"data:application/pdf;base64,{b64}",
+            })
+        else:
+            raise RuntimeError(
+                f"openai responses adapter cannot encode attachment "
+                f"{a.source_label!r} (mime {a.mime_type})."
+            )
+    parts.append({"type": "input_text", "text": prompt})
+    return [{"role": "user", "content": parts}]
+
+
+def _chat_user_content(prompt: str, attachments: tuple[Attachment, ...]):
+    """User-message content for chat.completions.create. Images only — PDFs
+    have no content-block type on this API and should be rejected upstream by
+    the capability check."""
+    if not attachments:
+        return prompt
+    parts: list[dict] = [{"type": "text", "text": prompt}]
+    for a in attachments:
+        if a.mime_type == "application/pdf":
+            raise RuntimeError(
+                "openai chat-completions cannot accept PDF inputs; use a "
+                "Responses-API model (gpt-5, o1/o3/o4, codex)."
+            )
+        if not a.mime_type.startswith("image/"):
+            raise RuntimeError(
+                f"openai chat-completions cannot encode attachment "
+                f"{a.source_label!r} (mime {a.mime_type})."
+            )
+        b64 = base64.b64encode(a.data).decode()
+        parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{a.mime_type};base64,{b64}"},
+        })
+    return parts
 
 
 class OpenAIProvider(LLMProvider):
@@ -54,7 +115,7 @@ class OpenAIProvider(LLMProvider):
     def _generate_responses(self, request: Request) -> Response:
         kwargs: dict = {
             "model": request.model,
-            "input": request.prompt,
+            "input": _responses_input(request.prompt, request.attachments),
             "max_output_tokens": request.max_tokens,
             "store": False,
         }
@@ -97,7 +158,10 @@ class OpenAIProvider(LLMProvider):
         messages = []
         if request.system:
             messages.append({"role": "system", "content": request.system})
-        messages.append({"role": "user", "content": request.prompt})
+        messages.append({
+            "role": "user",
+            "content": _chat_user_content(request.prompt, request.attachments),
+        })
 
         kwargs: dict = {
             "model": request.model,

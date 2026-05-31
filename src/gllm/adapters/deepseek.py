@@ -37,6 +37,12 @@ class DeepSeekProvider(LLMProvider):
         self.client = OpenAI(api_key=key, base_url=DEEPSEEK_BASE_URL, max_retries=3)
 
     def generate(self, request: Request) -> Response:
+        if request.attachments:
+            raise RuntimeError(
+                "deepseek does not accept file attachments (no native image "
+                "or document API). Try a vision-capable model like "
+                "claude-opus-4-8, gpt-5, or gemini-3-pro-preview."
+            )
         system = request.system
         if request.schema is not None:
             schema_txt = json.dumps(request.schema, indent=2)

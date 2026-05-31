@@ -122,6 +122,50 @@ gllm --schema '{"type":"object","properties":{"x":{"type":"integer"}},"required"
 gllm -v "hello" 2>>gllm.log
 ```
 
+## File inputs
+
+`-f PATH` attaches a binary file (image or PDF) to the request. It's repeatable.
+Use `-` to read from stdin, or bash process substitution `<(cmd)` — `-f` only
+needs *a path*, and the shell already knows how to compose paths with pipes.
+
+```sh
+# Plain path
+gllm -m claude-opus-4-8 -f ./cat.png "describe this"
+
+# stdin
+curl -s https://example.com/img.jpg | gllm -f - --mime image/jpeg "describe"
+
+# Process substitution — totally Unix, no special code in gllm
+gllm -m gemini-3-pro-preview -f <(curl -s https://example.com/x.png) "ocr"
+
+# Multiple files in one call
+gllm -m claude-opus-4-8 -f a.pdf -f b.pdf "what's different?"
+
+# xargs fan-out
+fd -e png . | xargs -I{} gllm -f {} "one-line caption"
+```
+
+MIME type is sniffed from the leading bytes (PNG/JPEG/GIF/WebP/PDF magic) and
+falls back to the file extension. Use `--mime TYPE` to override.
+
+### What attaches where (native or fail)
+
+Each provider uses its own native attachment API. If the provider has no native
+mechanism for that file type, `gllm` fails fast (exit 2) — no silent
+text-extraction fallback. Pick a model that fits the data.
+
+| Provider | Image | PDF |
+|---|---|---|
+| Anthropic / Azure Anthropic | yes (image block) | yes (document block) |
+| OpenAI / Azure OpenAI (Responses: gpt-5, o-series, codex) | yes (`input_image`) | yes (`input_file`) |
+| OpenAI / Azure OpenAI (Chat: gpt-4*, gpt-3.5) | yes (`image_url`) | no |
+| Gemini | yes (inline Part) | yes (inline Part) |
+| xAI Grok | yes (inherits OpenAI Responses) | no |
+| DeepSeek | no | no |
+
+Text files go through the existing `cat … \| gllm` pipe — `-f` is for the binary
+content you can't pipe sensibly.
+
 ## Recipes — instruction & schema libraries
 
 Reusable system prompts and JSON Schemas ship with `gllm` as plain files under

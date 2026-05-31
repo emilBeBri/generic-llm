@@ -27,6 +27,7 @@ import os
 from ..config import work_env
 from ..domain import Request, Response
 from ..ports import LLMProvider
+from .anthropic import _anthropic_content
 
 
 def _normalize_foundry_url(endpoint: str) -> str:
@@ -67,10 +68,11 @@ class AzureAnthropicProvider(LLMProvider):
         )
 
     def generate(self, request: Request) -> Response:
+        content = _anthropic_content(request.prompt, request.attachments)
         kwargs: dict = {
             "model": request.model,
             "max_tokens": request.max_tokens,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": [{"role": "user", "content": content}],
         }
 
         # Azure has no native json_schema; emulate via a system instruction.

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 
+from ..domain import Request, Response
 from .openai import OpenAIProvider
 
 GROK_BASE_URL = "https://api.x.ai/v1"
@@ -27,3 +28,15 @@ class GrokProvider(OpenAIProvider):
         if not key:
             raise RuntimeError("XAI_API_KEY is not set")
         super().__init__(api_key=key, base_url=GROK_BASE_URL, name="grok")
+
+    def generate(self, request: Request) -> Response:
+        # xAI's Responses API accepts input_image but has no input_file
+        # equivalent for PDFs. Reject those up front rather than letting the
+        # API return an opaque 400.
+        for a in request.attachments:
+            if a.mime_type == "application/pdf":
+                raise RuntimeError(
+                    "grok does not accept PDF attachments. Try claude-opus-4-8, "
+                    "a gpt-5/o-series model, or gemini-3-pro-preview."
+                )
+        return super().generate(request)

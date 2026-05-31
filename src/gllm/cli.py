@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import sys
 from pathlib import Path
 
-from .domain import Request
+from .adapters._capabilities import supports_image, supports_pdf
+from .domain import Attachment, Request
 from .ports import LLMProvider
 from .routing import provider_for
 
@@ -56,6 +58,63 @@ def _read_stdin_if_piped() -> str | None:
         return None
     data = sys.stdin.read()
     return data if data else None
+
+
+# (magic, mime) pairs. First match wins.
+_MAGIC_BYTES: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"%PDF-", "application/pdf"),
+)
+
+
+def _sniff_mime(data: bytes, path_hint: Path | None = None) -> str | None:
+    """Detect a MIME type from the leading bytes, with extension fallback.
+
+    Returns None if both fail — the caller decides whether that's fatal."""
+    head = data[:16]
+    for magic, mime in _MAGIC_BYTES:
+        if head.startswith(magic):
+            return mime
+    # WebP: RIFF....WEBP
+    if len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    if path_hint is not None:
+        guess, _ = mimetypes.guess_type(str(path_hint))
+        if guess:
+            return guess
+    return None
+
+
+def _load_attachment(spec: str, mime_override: str | None) -> Attachment:
+    """Read one `-f` argument into an Attachment.
+
+    `spec == "-"` reads stdin as bytes (caller is responsible for ensuring
+    text-stdin isn't also being consumed). Anything else is an open() target
+    — including process substitution paths like /dev/fd/63 from bash <(...).
+    """
+    if spec == "-":
+        if sys.stdin.isatty():
+            raise RuntimeError(
+                "`-f -` requested but stdin is a TTY (nothing to read)."
+            )
+        data = sys.stdin.buffer.read()
+        label = "<stdin>"
+        path_hint: Path | None = None
+    else:
+        p = Path(spec)
+        data = p.read_bytes()
+        label = spec
+        path_hint = p
+
+    mime = mime_override or _sniff_mime(data, path_hint)
+    if not mime:
+        raise RuntimeError(
+            f"could not determine MIME type for {label!r}; pass --mime TYPE."
+        )
+    return Attachment(data=data, mime_type=mime, source_label=label)
 
 
 def _read_text_arg(value: str) -> str:
@@ -122,7 +181,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "-m",
         "--model",
-        default=os.environ.get("GLLM_MODEL", DEFAULT_MODEL),
+        default=None,
         help=f"Model name. Default: $GLLM_MODEL or {DEFAULT_MODEL}.",
     )
     p.add_argument(
@@ -155,6 +214,27 @@ def _parser() -> argparse.ArgumentParser:
         default=4096,
     )
     p.add_argument(
+        "-f",
+        "--file",
+        action="append",
+        default=[],
+        dest="files",
+        metavar="PATH",
+        help=(
+            "Attach a file (image or PDF). Repeatable. Use `-` for stdin "
+            "(mutually exclusive with text-on-stdin in that invocation). "
+            "Process substitution `<(cmd)` works as a path."
+        ),
+    )
+    p.add_argument(
+        "--mime",
+        default=None,
+        help=(
+            "Override MIME type for the next `-f` (applies to all -f in this "
+            "invocation). Sniffed from bytes / extension by default."
+        ),
+    )
+    p.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -168,7 +248,26 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parser().parse_args(argv)
 
-    stdin_text = _read_stdin_if_piped()
+    # Resolve -m manually so we can tell whether the user typed it.
+    if args.model is None:
+        args.model = os.environ.get("GLLM_MODEL", DEFAULT_MODEL)
+        print(f"gllm: model={args.model} (default; pass -m to override)", file=sys.stderr)
+
+    files: list[str] = args.files or []
+    stdin_is_file = "-" in files
+    if files.count("-") > 1:
+        print("gllm: -f - can only be specified once.", file=sys.stderr)
+        return 2
+
+    # Load attachments first so a failure short-circuits before any LLM call.
+    # If `-f -` is in play, stdin is bytes — skip the text-stdin read entirely.
+    try:
+        attachments = tuple(_load_attachment(s, args.mime) for s in files)
+    except (OSError, RuntimeError) as e:
+        print(f"gllm: -f: {e}", file=sys.stderr)
+        return 2
+
+    stdin_text = None if stdin_is_file else _read_stdin_if_piped()
     positional = args.prompt
 
     if positional and stdin_text:
@@ -202,9 +301,28 @@ def main(argv: list[str] | None = None) -> int:
         temperature=args.temperature,
         schema=schema,
         json_mode=args.json or schema is not None,
+        attachments=attachments,
     )
 
     provider_name = provider_for(args.model)
+
+    # Native-or-fail: refuse to dispatch if any attachment is unsupported.
+    for a in attachments:
+        kind = "image" if a.mime_type.startswith("image/") else (
+            "pdf" if a.mime_type == "application/pdf" else a.mime_type
+        )
+        ok = (
+            supports_image(provider_name) if kind == "image"
+            else supports_pdf(provider_name, args.model) if kind == "pdf"
+            else False
+        )
+        if not ok:
+            print(
+                f"gllm: {provider_name} does not accept {kind} inputs "
+                f"(model={args.model}). Try a vision/document-capable model.",
+                file=sys.stderr,
+            )
+            return 2
 
     if args.verbose:
         print(
