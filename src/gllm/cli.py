@@ -251,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     # Resolve -m manually so we can tell whether the user typed it.
     if args.model is None:
         args.model = os.environ.get("GLLM_MODEL", DEFAULT_MODEL)
-        print(f"gllm: model={args.model} (default; pass -m to override)", file=sys.stderr)
+        print(args.model, file=sys.stderr)
 
     files: list[str] = args.files or []
     stdin_is_file = "-" in files
