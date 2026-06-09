@@ -74,8 +74,15 @@ class AnthropicProvider(LLMProvider):
             kwargs["temperature"] = request.temperature
 
         if request.schema is not None:
-            kwargs["output_config"] = {
-                "format": {"type": "json_schema", "schema": request.schema}
+            # The Anthropic Python SDK has no top-level `output_config` param, so
+            # passing it directly raises `TypeError: Messages.create() got an
+            # unexpected keyword argument 'output_config'`. The *API* accepts it,
+            # but only via `extra_body` — the same constraint bebri-chat's own
+            # adapter documents (see its anthropic_adapter.py "CRITICAL FIX").
+            kwargs["extra_body"] = {
+                "output_config": {
+                    "format": {"type": "json_schema", "schema": request.schema}
+                }
             }
         elif request.json_mode:
             extra = "Respond with valid JSON only. No prose, no code fences."
