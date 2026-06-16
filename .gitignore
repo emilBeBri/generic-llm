@@ -5,6 +5,10 @@
 # bebri-chat session state (collateral from running the parent agent in this dir)
 llms/
 
+# Scratch / editor state (ephemeral, never committed)
+tmp.zsh
+vim-quickfiles.txt
+
 # Python project
 .venv/
 __pycache__/
