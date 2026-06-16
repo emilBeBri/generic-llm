@@ -12,7 +12,9 @@ Both Azure adapters share `AZURE_FOUNDRY_ENDPOINT`; keys differ (`AZURE_OPENAI_A
 
 ## Azure Anthropic has no `output_config`
 
-Direct Anthropic uses native `output_config.format = json_schema` for structured output. **Azure Foundry does not support it.** So `azure_anthropic.py` emulates `--schema`/`--json` by injecting an instruction into the system prompt (pasting the schema text for `--schema`) — the same fallback the direct adapter uses for bare `--json`. There is also no effort/`output_config` thinking control on Azure.
+Direct Anthropic uses native `output_config.format = json_schema` for structured output. **Azure Foundry does not support it.** So `azure_anthropic.py` emulates `--schema`/`--json` by injecting an instruction into the system prompt (pasting the schema text for `--schema`) — the same fallback the direct adapter uses for bare `--json`.
+
+No `output_config` also means **no reasoning effort grading on Azure.** Modern Claude (4.6+) grades `--reasoning` via `output_config.effort` on the direct API; Azure can't, so `azure_anthropic` drops `effort` and every level collapses to default `thinking.adaptive`. (It can't fall back to `enabled`+`budget_tokens` either — 4.6+ reject that shape with a 400; see [[ADR-reasoning-effort-ladder]].)
 
 ## WORK mode (`config.work_env`) — a routing toggle, NOT a thinking knob
 

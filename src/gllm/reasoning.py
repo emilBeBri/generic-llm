@@ -36,52 +36,54 @@ def openai_effort(level: str) -> str:
     return _check(level)
 
 
-# Anthropic budgets for the three lower rungs. `xhigh` is special-cased per
-# family below (adaptive on 4.6+, a large fixed budget otherwise).
+# Anthropic budgets for the three lower rungs on the OLD enabled+budget
+# interface (4.5 and earlier). xhigh is special-cased per family below.
 _ANTHROPIC_BUDGETS = {"low": 8000, "medium": 16000, "high": 32000}
 _ANTHROPIC_HEADROOM = 8000  # answer tokens reserved above the thinking budget
 
 
 def _is_adaptive_family(model: str) -> bool:
-    """Claude 4.6/4.7/4.8 use adaptive thinking and require `display:summarized`
-    (their default flipped to `omitted`, which suppresses reasoning)."""
+    """Claude Opus/Sonnet 4.6/4.7/4.8 use the adaptive-thinking interface: they
+    REQUIRE `thinking.type=adaptive` (+ `display:summarized`, since their default
+    flipped to `omitted`) and reject the old `enabled`+`budget_tokens` shape.
+    Effort is graded by `output_config.effort`, not a token budget."""
     m = model.lower()
     return "4-6" in m or "4-7" in m or "4-8" in m
 
 
 def anthropic_thinking(level: str, model: str) -> dict:
-    """Translate the ladder to an Anthropic `thinking` block + a max_tokens floor.
+    """Translate the ladder to an Anthropic `thinking` block (+ a max_tokens floor).
 
-    Returns ``{"thinking": <block>, "min_max_tokens": <int>}``. The caller sets
+    Returns ``{"thinking": <block>, "min_max_tokens": <int>}`` and, for the
+    adaptive family, an ``"effort"`` string (= our ladder, 1:1). The caller sets
     ``kwargs["thinking"]``, raises ``max_tokens`` to at least ``min_max_tokens``,
-    and drops temperature. `xhigh` is adaptive thinking on the 4.6/4.7/4.8 family
-    and a large fixed budget otherwise.
+    and drops temperature. When ``"effort"`` is present it is graded via
+    ``output_config.effort`` — but ONLY on the direct Anthropic API; Azure
+    Foundry has no `output_config`, so there every level collapses to default
+    adaptive thinking. 4.5 and older use the old ``enabled``+``budget_tokens``.
     """
     _check(level)
     m = model.lower()
-    adaptive = _is_adaptive_family(model)
 
-    if level == "xhigh":
-        if adaptive:
-            return {
-                "thinking": {"type": "adaptive", "display": "summarized"},
-                "min_max_tokens": 64000,
-            }
-        if "4-5" in m:
-            return {
-                "thinking": {"type": "enabled", "budget_tokens": 32000},
-                "min_max_tokens": 64000,
-            }
+    if _is_adaptive_family(model):
         return {
-            "thinking": {"type": "enabled", "budget_tokens": 16000},
-            "min_max_tokens": 32000,
+            "thinking": {"type": "adaptive", "display": "summarized"},
+            "effort": level,
+            "min_max_tokens": 64000,
         }
 
+    # 4.5 and older: the original enabled + budget_tokens interface.
+    if level == "xhigh":
+        budget, floor = (32000, 64000) if "4-5" in m else (16000, 32000)
+        return {
+            "thinking": {"type": "enabled", "budget_tokens": budget},
+            "min_max_tokens": floor,
+        }
     budget = _ANTHROPIC_BUDGETS[level]
-    block: dict = {"type": "enabled", "budget_tokens": budget}
-    if adaptive:
-        block["display"] = "summarized"
-    return {"thinking": block, "min_max_tokens": budget + _ANTHROPIC_HEADROOM}
+    return {
+        "thinking": {"type": "enabled", "budget_tokens": budget},
+        "min_max_tokens": budget + _ANTHROPIC_HEADROOM,
+    }
 
 
 # Gemini thinking_budget per rung. Budgets are clamped per model; -1 = dynamic

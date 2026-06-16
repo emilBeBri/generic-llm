@@ -89,6 +89,9 @@ class AzureAnthropicProvider(LLMProvider):
             kwargs["system"] = system
 
         # Reasoning via --reasoning, translated to the native thinking block.
+        # Azure Foundry has no `output_config`, so the adaptive family's `effort`
+        # (r["effort"]) can't be graded here — every level collapses to default
+        # adaptive thinking. We deliberately drop it rather than 400.
         thinking_on = request.reasoning is not None
         if thinking_on:
             r = anthropic_thinking(request.reasoning, request.model)

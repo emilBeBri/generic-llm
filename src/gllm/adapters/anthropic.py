@@ -76,28 +76,30 @@ class AnthropicProvider(LLMProvider):
         if request.temperature is not None and not reasoning_on:
             kwargs["temperature"] = request.temperature
 
+        effort: str | None = None
         if reasoning_on:
             r = anthropic_thinking(request.reasoning, request.model)
             kwargs["thinking"] = r["thinking"]
             # The thinking budget must be strictly below max_tokens.
             kwargs["max_tokens"] = max(kwargs["max_tokens"], r["min_max_tokens"])
+            effort = r.get("effort")
 
+        # `output_config` carries BOTH structured-output `format` and reasoning
+        # `effort`. The SDK has no top-level param for it (passing it directly
+        # raises TypeError), so it goes via `extra_body` — the same constraint
+        # bebri-chat's adapter documents ("CRITICAL FIX"). Build it once.
+        output_config: dict = {}
         if request.schema is not None:
-            # The Anthropic Python SDK has no top-level `output_config` param, so
-            # passing it directly raises `TypeError: Messages.create() got an
-            # unexpected keyword argument 'output_config'`. The *API* accepts it,
-            # but only via `extra_body` — the same constraint bebri-chat's own
-            # adapter documents (see its anthropic_adapter.py "CRITICAL FIX").
-            kwargs["extra_body"] = {
-                "output_config": {
-                    "format": {"type": "json_schema", "schema": request.schema}
-                }
-            }
+            output_config["format"] = {"type": "json_schema", "schema": request.schema}
         elif request.json_mode:
             extra = "Respond with valid JSON only. No prose, no code fences."
             kwargs["system"] = (
                 f"{request.system}\n\n{extra}" if request.system else extra
             )
+        if effort is not None:
+            output_config["effort"] = effort
+        if output_config:
+            kwargs["extra_body"] = {"output_config": output_config}
 
         # Long thinking generations can outrun a non-streaming socket timeout,
         # so stream and take the final message when reasoning is on.

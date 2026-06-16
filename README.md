@@ -102,20 +102,25 @@ loudly with exit 2 rather than silently ignoring you.
 ```sh
 gllm -r high  -m gpt-5.1 "tricky logic puzzle"
 gllm -r xhigh -m claude-opus-4-8 "prove it step by step"
-gllm -r low   -m gemini-3-pro-preview "quick sanity check"
+gllm -r low   -m gemini-2.5-pro "quick sanity check"
 ```
 
 | Provider | Native control | low → xhigh |
 |---|---|---|
 | OpenAI / Grok / Azure OpenAI (Responses) | `reasoning.effort` | the level, verbatim |
-| Anthropic / Azure Anthropic | `thinking` budget; adaptive at `xhigh` | budget 8k / 16k / 32k / max |
+| Anthropic 4.6/4.7/4.8 (direct) | `thinking.adaptive` + `output_config.effort` | the level, verbatim |
+| Anthropic 4.5 & older | `thinking` budget | 8k / 16k / 32k / 32k |
+| Azure Anthropic | `thinking.adaptive` (no `output_config`) | level not graded — default adaptive |
 | Gemini | `thinking_budget` | 4k / 8k / 16k / dynamic (`-1`) |
 | OpenAI Chat (gpt-4o), DeepSeek | none | unsupported → exit 2 |
 
 For Anthropic/OpenAI, setting a level also bumps `max_tokens` so reasoning
 doesn't starve the answer, and drops `temperature` (reasoning models reject a
-custom one). `xhigh` may exceed what an older model supports (e.g. some
-o-series, `grok-3-mini`) — that surfaces as a loud API 400.
+custom one). Two real constraints (found by live testing): modern Claude
+(4.6+) **rejects** the old `thinking.type=enabled` budget shape — it needs
+`adaptive` + `output_config.effort`, and Azure Foundry has no `output_config`
+so it can't grade effort there. `xhigh` may also exceed what an older model
+supports (some o-series, `grok-3-mini`) — a loud API 400.
 
 ## Usage
 

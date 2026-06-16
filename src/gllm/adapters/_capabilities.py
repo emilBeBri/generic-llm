@@ -30,9 +30,8 @@ def use_responses_api(model: str) -> bool:
     m = (model or "").strip().lower()
     if any(m.startswith(p) for p in _RESPONSES_API_PREFIXES):
         return True
-    if any(m.startswith(p) for p in _CHAT_COMPLETIONS_PREFIXES):
-        return False
-    return True
+    # Classic chat models -> Chat; everything else (incl. unknown) -> Responses.
+    return not any(m.startswith(p) for p in _CHAT_COMPLETIONS_PREFIXES)
 
 
 _IMAGE_PROVIDERS = {

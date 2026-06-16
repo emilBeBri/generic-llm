@@ -31,34 +31,26 @@ def test_openai_effort_rejects_unknown():
 # --- anthropic_thinking ------------------------------------------------------
 
 
-def test_anthropic_lower_rungs_are_enabled_budgets():
-    assert anthropic_thinking("low", "claude-opus-4-8")["thinking"] == {
-        "type": "enabled",
-        "budget_tokens": 8000,
-        "display": "summarized",
-    }
-    assert anthropic_thinking("medium", "claude-opus-4-8")["thinking"][
-        "budget_tokens"
-    ] == 16000
-    assert anthropic_thinking("high", "claude-opus-4-8")["thinking"][
-        "budget_tokens"
-    ] == 32000
+def test_anthropic_adaptive_family_uses_adaptive_plus_effort():
+    # 4.6/4.7/4.8 reject enabled+budget; every rung is adaptive + an effort
+    # string (graded via output_config.effort on the direct API).
+    for level in ("low", "medium", "high", "xhigh"):
+        for model in ("claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6"):
+            r = anthropic_thinking(level, model)
+            assert r["thinking"] == {"type": "adaptive", "display": "summarized"}
+            assert r["effort"] == level
+            assert r["min_max_tokens"] == 64000
 
 
-def test_anthropic_min_max_tokens_exceeds_budget():
-    for level in ("low", "medium", "high"):
-        r = anthropic_thinking(level, "claude-opus-4-8")
-        assert r["min_max_tokens"] > r["thinking"]["budget_tokens"]
-
-
-def test_anthropic_display_only_on_adaptive_family():
-    # 4.5 / older enabled blocks carry no display key.
-    assert "display" not in anthropic_thinking("low", "claude-opus-4-5")["thinking"]
-    # 4.6/4.7/4.8 require display:summarized.
-    assert (
-        anthropic_thinking("low", "claude-opus-4-7")["thinking"]["display"]
-        == "summarized"
-    )
+def test_anthropic_old_family_uses_enabled_budget_no_effort():
+    # 4.5 / older keep the original enabled + budget_tokens interface, no effort.
+    expected = {"low": 8000, "medium": 16000, "high": 32000}
+    for level, budget in expected.items():
+        r = anthropic_thinking(level, "claude-opus-4-5")
+        assert r["thinking"] == {"type": "enabled", "budget_tokens": budget}
+        assert "effort" not in r
+        assert "display" not in r["thinking"]
+        assert r["min_max_tokens"] > budget
 
 
 def test_anthropic_xhigh_per_family():
