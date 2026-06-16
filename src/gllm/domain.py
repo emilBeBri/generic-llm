@@ -41,6 +41,10 @@ class Request:
     # Binary attachments (images, PDFs). Each adapter uses its provider's
     # native attachment API; providers without one raise on non-empty.
     attachments: tuple[Attachment, ...] = ()
+    # Abstract reasoning-effort level: one of reasoning.LEVELS (low/medium/high/
+    # xhigh) or None (hands-off — no reasoning param is sent). Each adapter
+    # translates it to its provider-native shape; see gllm.reasoning.
+    reasoning: str | None = None
 
 
 @dataclass

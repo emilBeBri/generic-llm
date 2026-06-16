@@ -21,10 +21,12 @@ import os
 import sys
 from pathlib import Path
 
-from .adapters._capabilities import supports_image, supports_pdf
+from . import reasoning as reasoning_mod
+from .adapters._capabilities import supports_image, supports_pdf, supports_reasoning
+from .config import work_env
 from .domain import Attachment, Request
 from .ports import LLMProvider
-from .routing import provider_for
+from .routing import effective_model, provider_for
 
 DEFAULT_MODEL = "deepseek-v4-flash"
 # Temporary: keys live in the bebri-chat .env until we wire up a real
@@ -209,6 +211,17 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
     )
     p.add_argument(
+        "-r",
+        "--reasoning",
+        choices=reasoning_mod.LEVELS,
+        default=None,
+        help=(
+            "Reasoning effort: low/medium/high/xhigh. Translated to each "
+            "provider's native control. Omitted = provider default. Fails if "
+            "the model has no reasoning control."
+        ),
+    )
+    p.add_argument(
         "--max-tokens",
         type=int,
         default=4096,
@@ -252,6 +265,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.model is None:
         args.model = os.environ.get("GLLM_MODEL", DEFAULT_MODEL)
         print(args.model, file=sys.stderr)
+
+    # WORK mode redirects direct Anthropic/OpenAI models to their Azure Foundry
+    # `-dev` deployment. Everything downstream sees the effective name.
+    args.model = effective_model(args.model, work_env())
 
     files: list[str] = args.files or []
     stdin_is_file = "-" in files
@@ -302,9 +319,20 @@ def main(argv: list[str] | None = None) -> int:
         schema=schema,
         json_mode=args.json or schema is not None,
         attachments=attachments,
+        reasoning=args.reasoning,
     )
 
     provider_name = provider_for(args.model)
+
+    # Native-or-fail: refuse a reasoning level the model can't honour.
+    if args.reasoning and not supports_reasoning(provider_name, args.model):
+        print(
+            f"gllm: {provider_name} model {args.model!r} has no reasoning "
+            f"control; drop --reasoning or use a reasoning-capable model "
+            f"(gpt-5/o-series, claude-*, gemini-*, grok-*).",
+            file=sys.stderr,
+        )
+        return 2
 
     # Native-or-fail: refuse to dispatch if any attachment is unsupported.
     for a in attachments:

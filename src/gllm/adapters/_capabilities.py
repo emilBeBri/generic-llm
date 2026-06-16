@@ -57,3 +57,19 @@ def supports_pdf(provider: str, model: str) -> bool:
         return use_responses_api(model)
     # grok, deepseek: no PDF support today.
     return False
+
+
+def supports_reasoning(provider: str, model: str) -> bool:
+    """Can this (provider, model) honour a `--reasoning` level?
+
+    Anthropic/Gemini families think across the board. OpenAI-compatible backends
+    only reason on the Responses API (o-series, gpt-5, grok-*) — the Chat
+    Completions models (gpt-4o, gpt-4.1) have no reasoning control. DeepSeek
+    reasons by default but exposes no effort knob, so we cannot honour a level.
+    """
+    if provider in {"anthropic", "azure_anthropic", "gemini"}:
+        return True
+    if provider in {"openai", "azure_openai", "grok"}:
+        return use_responses_api(model)
+    # deepseek and anything unknown: no control surface.
+    return False

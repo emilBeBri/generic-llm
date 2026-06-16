@@ -18,6 +18,7 @@ import anthropic
 
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
+from ..reasoning import anthropic_thinking
 
 
 def _anthropic_content(prompt: str, attachments: tuple[Attachment, ...]) -> list[dict] | str:
@@ -63,6 +64,7 @@ class AnthropicProvider(LLMProvider):
 
     def generate(self, request: Request) -> Response:
         content = _anthropic_content(request.prompt, request.attachments)
+        reasoning_on = request.reasoning is not None
         kwargs: dict = {
             "model": request.model,
             "max_tokens": request.max_tokens,
@@ -70,8 +72,15 @@ class AnthropicProvider(LLMProvider):
         }
         if request.system:
             kwargs["system"] = request.system
-        if request.temperature is not None:
+        # Extended thinking pins temperature to 1; only send it otherwise.
+        if request.temperature is not None and not reasoning_on:
             kwargs["temperature"] = request.temperature
+
+        if reasoning_on:
+            r = anthropic_thinking(request.reasoning, request.model)
+            kwargs["thinking"] = r["thinking"]
+            # The thinking budget must be strictly below max_tokens.
+            kwargs["max_tokens"] = max(kwargs["max_tokens"], r["min_max_tokens"])
 
         if request.schema is not None:
             # The Anthropic Python SDK has no top-level `output_config` param, so
@@ -90,7 +99,13 @@ class AnthropicProvider(LLMProvider):
                 f"{request.system}\n\n{extra}" if request.system else extra
             )
 
-        msg = self.client.messages.create(**kwargs)
+        # Long thinking generations can outrun a non-streaming socket timeout,
+        # so stream and take the final message when reasoning is on.
+        if reasoning_on:
+            with self.client.messages.stream(**kwargs) as stream:
+                msg = stream.get_final_message()
+        else:
+            msg = self.client.messages.create(**kwargs)
 
         text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
 

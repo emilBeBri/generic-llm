@@ -4,19 +4,17 @@ Claude served through Azure AI Foundry via the `AnthropicFoundry` client.
 Model names carry a `-dev` suffix (e.g. `claude-opus-4-7-dev`), which routing
 uses to pick this adapter over the direct Anthropic one.
 
-Two things make it diverge from the direct Anthropic adapter:
+It diverges from the direct Anthropic adapter on one point:
 
-1. **No `output_config`.** Azure does not support Anthropic's native
-   `output_config.format = json_schema`, so `--schema`/`--json` are emulated
-   with an instruction injected into the system prompt (same as the direct
-   adapter's json_mode fallback).
+- **No `output_config`.** Azure does not support Anthropic's native
+  `output_config.format = json_schema`, so `--schema`/`--json` are emulated
+  with an instruction injected into the system prompt (same as the direct
+  adapter's json_mode fallback).
 
-2. **WORK_ENV forced thinking.** When WORK mode is on (see config.work_env),
-   we force maximum extended thinking, scaled by model family. Thinking
-   requires a generous max_tokens and an unset temperature, so we bump the
-   former and drop the latter. We stream and take the final message because
-   long thinking generations can outrun a non-streaming socket timeout; only
-   the text blocks are returned (thinking blocks are discarded).
+Reasoning is handled exactly like the direct adapter: `--reasoning` is
+translated to a native `thinking` block (see ..reasoning). We always stream and
+take the final message — long thinking generations can outrun a non-streaming
+socket timeout; only text blocks are returned (thinking blocks are discarded).
 """
 
 from __future__ import annotations
@@ -24,9 +22,9 @@ from __future__ import annotations
 import json
 import os
 
-from ..config import work_env
 from ..domain import Request, Response
 from ..ports import LLMProvider
+from ..reasoning import anthropic_thinking
 from .anthropic import _anthropic_content
 
 
@@ -90,12 +88,15 @@ class AzureAnthropicProvider(LLMProvider):
         if system:
             kwargs["system"] = system
 
-        thinking_forced = work_env() and self._force_work_env_thinking(
-            kwargs, request.model
-        )
+        # Reasoning via --reasoning, translated to the native thinking block.
+        thinking_on = request.reasoning is not None
+        if thinking_on:
+            r = anthropic_thinking(request.reasoning, request.model)
+            kwargs["thinking"] = r["thinking"]
+            kwargs["max_tokens"] = max(kwargs["max_tokens"], r["min_max_tokens"])
 
         # Extended thinking pins temperature to 1; only set it otherwise.
-        if request.temperature is not None and not thinking_forced:
+        if request.temperature is not None and not thinking_on:
             kwargs["temperature"] = request.temperature
 
         with self.client.messages.stream(**kwargs) as stream:
@@ -113,24 +114,3 @@ class AzureAnthropicProvider(LLMProvider):
             output_tokens=msg.usage.output_tokens,
             raw=msg,
         )
-
-    @staticmethod
-    def _force_work_env_thinking(kwargs: dict, model: str) -> bool:
-        """Force maximum extended thinking for WORK mode, scaled by family.
-
-        Azure does not support `output_config`/effort control, so we only set
-        the thinking block. 4.6/4.7 use adaptive thinking; `display:summarized`
-        is required on 4.7 (its default flipped to 'omitted') or the reasoning
-        is suppressed. 4.5 and others use a fixed budget.
-        """
-        m = model.lower()
-        if "4-6" in m or "4-7" in m or "4-8" in m:
-            kwargs["max_tokens"] = 64000
-            kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
-        elif "4-5" in m:
-            kwargs["max_tokens"] = 64000
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": 32000}
-        else:
-            kwargs["max_tokens"] = 32000
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": 16000}
-        return True

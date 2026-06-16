@@ -14,18 +14,13 @@ Both Azure adapters share `AZURE_FOUNDRY_ENDPOINT`; keys differ (`AZURE_OPENAI_A
 
 Direct Anthropic uses native `output_config.format = json_schema` for structured output. **Azure Foundry does not support it.** So `azure_anthropic.py` emulates `--schema`/`--json` by injecting an instruction into the system prompt (pasting the schema text for `--schema`) — the same fallback the direct adapter uses for bare `--json`. There is also no effort/`output_config` thinking control on Azure.
 
-## WORK mode — forced extended thinking (`config.work_env`)
+## WORK mode (`config.work_env`) — a routing toggle, NOT a thinking knob
 
-`WORK=1` or `WORK_ENV=1` (truthy: 1/true/yes/on; `WORK` wins). In bebri-chat this is `WORK_ENV` in `.env`; gllm also accepts the bare `WORK=1` as an ergonomic per-invocation flag (`WORK=1 gllm -m claude-opus-4-7-dev ...`).
+`WORK=1` or `WORK_ENV=1` (truthy: 1/true/yes/on; `WORK` wins). In bebri-chat this is `WORK_ENV` in `.env`; gllm also accepts the bare `WORK=1` per-invocation.
 
-Effect is **only** in `azure_anthropic.py` (`_force_work_env_thinking`), scaled by model family:
-- `4-6`/`4-7` -> `thinking={type: adaptive, display: summarized}`, `max_tokens=64000`. `display:summarized` is **required** on 4.7 (its default flipped to `omitted`) or the thinking is suppressed.
-- `4-5` -> `{type: enabled, budget_tokens: 32000}`, `max_tokens=64000`.
-- else -> `{type: enabled, budget_tokens: 16000}`, `max_tokens=32000`.
+**History / correction (2026-06-16):** the original gllm port wrongly made `WORK` *force maximum extended thinking* on Azure Anthropic (`_force_work_env_thinking`). That coupling is **removed** — reasoning is `--reasoning` only (see [[ADR-reasoning-effort-ladder]]). `WORK` is now what it is in bebri-chat: the corporate/Azure switch.
 
-When thinking is forced we **drop `temperature`** (extended thinking pins it to 1) and **stream** (`messages.stream().get_final_message()`) so a long reasoning generation doesn't outrun the non-streaming socket timeout. Only `text` blocks are returned; thinking blocks are discarded (gllm prints final text only).
-
-bebri-chat's WORK_ENV also gated `-dev` model *visibility* in its picker and disabled SSL verification (corporate proxy). gllm has no picker and does no web fetching, so neither was ported — WORK mode here is purely the thinking knob.
+**Implemented semantic:** `routing.effective_model(model, work)` — under `WORK=1` a *direct* Anthropic/OpenAI model name gets `-dev` appended (`claude-opus-4-8` → `claude-opus-4-8-dev`), so `provider_for` then routes it to the Azure adapter and the `-dev` string is the deployment name sent to Foundry. Already-`-dev` names, `WORK=0`, and non-Azure providers (Gemini/Grok/DeepSeek) pass through unchanged; an explicit `-dev` name still selects Azure regardless of `WORK`. `cli.main` applies `effective_model` right after resolving `-m`, so the Request, routing, capability gates and verbose log all see the effective name. The redirect set is `routing._AZURE_REDIRECTABLE = {"anthropic", "openai"}` (the only two direct providers with a Foundry counterpart).
 
 ## Related
 - [[CONVENTIONS-multi-provider-routing]] — how `-dev` models route to these adapters in the first place.

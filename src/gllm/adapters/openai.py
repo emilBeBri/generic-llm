@@ -23,6 +23,7 @@ from openai import OpenAI
 
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
+from ..reasoning import openai_effort
 from ._capabilities import use_responses_api
 
 
@@ -113,16 +114,23 @@ class OpenAIProvider(LLMProvider):
         return self._generate_chat(request)
 
     def _generate_responses(self, request: Request) -> Response:
+        reasoning_on = request.reasoning is not None
+        # Reasoning tokens count against max_output_tokens; raise the floor so
+        # the visible answer isn't starved by a long reasoning pass.
+        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
         kwargs: dict = {
             "model": request.model,
             "input": _responses_input(request.prompt, request.attachments),
-            "max_output_tokens": request.max_tokens,
+            "max_output_tokens": max_out,
             "store": False,
         }
         if request.system:
             kwargs["instructions"] = request.system
-        if request.temperature is not None:
+        # Reasoning models (o-series, gpt-5) reject a custom temperature.
+        if request.temperature is not None and not reasoning_on:
             kwargs["temperature"] = request.temperature
+        if reasoning_on:
+            kwargs["reasoning"] = {"effort": openai_effort(request.reasoning)}
 
         if request.schema is not None:
             kwargs["text"] = {

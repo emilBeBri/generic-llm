@@ -20,6 +20,8 @@ Pure model-name inference, no config. Order matters: the Azure `-dev` suffix is 
 
 **The `-dev` suffix is the Azure Foundry marker.** This is the one non-obvious bit: `claude-opus-4-7` hits the direct Anthropic API, `claude-opus-4-7-dev` hits Azure Foundry. Mirrors bebri-chat exactly. `cli._build_provider` maps the provider string to a lazily-imported adapter class.
 
+`routing.effective_model(model, work)` is the WORK-mode front door to the same suffix: under `WORK=1` it appends `-dev` to direct Anthropic/OpenAI names (set `_AZURE_REDIRECTABLE`), so a clean `claude-opus-4-8` routes to Azure with deployment name `claude-opus-4-8-dev`. `cli.main` calls it right after resolving `-m`. WORK is **only** this routing toggle — it has nothing to do with reasoning (see [[GOTCHA-azure-foundry-constraints]] and [[ADR-reasoning-effort-ladder]]).
+
 ## OpenAI-compatible backends subclass `OpenAIProvider`
 
 DeepSeek, Grok, and Azure OpenAI all speak the OpenAI wire protocol. Rather than duplicate the Responses/Chat-Completions logic, `OpenAIProvider.__init__` takes optional `base_url=` and `name=`. The subclass just supplies a base_url, its own key env var, and a provider tag:
@@ -32,8 +34,8 @@ DeepSeek, Grok, and Azure OpenAI all speak the OpenAI wire protocol. Rather than
 
 ## Anthropic family thinking — 4-6 / 4-7 / 4-8 are one bucket
 
-`azure_anthropic._force_work_env_thinking` treats Claude **Opus 4-6, 4-7, and 4-8** identically: `thinking={type:"adaptive", display:"summarized"}` with `max_tokens=64000`. 4-5 stays on fixed-budget enabled thinking. Mirrors bebri-chat `anthropic_adapter.py:366` exactly. When a new family lands (4-9, 5-x), add it to that conditional. `display:"summarized"` is mandatory on 4-7+ (default flipped to `omitted`, which suppresses streaming thinking deltas — would make the terminal look hung).
+The `xhigh` rung of [[ADR-reasoning-effort-ladder]] (`reasoning.anthropic_thinking`) treats Claude **Opus 4-6, 4-7, and 4-8** identically: `thinking={type:"adaptive", display:"summarized"}` with `max_tokens=64000`. 4-5 stays on fixed-budget enabled thinking. Mirrors bebri-chat `anthropic_adapter.py:366`. When a new family lands (4-9, 5-x), add it to `_is_adaptive_family` / the `xhigh` branch. `display:"summarized"` is mandatory on 4-7+ (default flipped to `omitted`, which suppresses streaming thinking deltas — would make the terminal look hung).
 
 ## Related
-- [[GOTCHA-azure-foundry-constraints]] — what the two Azure adapters have to work around (no `output_config`, WORK-mode thinking, endpoint rewriting).
+- [[GOTCHA-azure-foundry-constraints]] — what the two Azure adapters have to work around (no `output_config`, the `WORK` routing toggle, endpoint rewriting).
 - [[CONVENTIONS-schemas-and-instructions]] — the json_schema strict-mode convention these adapters consume.

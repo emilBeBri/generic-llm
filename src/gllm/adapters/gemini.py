@@ -19,6 +19,7 @@ from google.genai import types
 
 from ..domain import Request, Response
 from ..ports import LLMProvider
+from ..reasoning import gemini_thinking_budget
 
 
 class GeminiProvider(LLMProvider):
@@ -33,11 +34,16 @@ class GeminiProvider(LLMProvider):
         self.client = genai.Client(api_key=key)
 
     def generate(self, request: Request) -> Response:
+        reasoning_on = request.reasoning is not None
+        # Thinking tokens count against the output budget; raise the floor so
+        # the visible answer isn't starved.
+        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
         config_args: dict = {
-            "max_output_tokens": request.max_tokens,
+            "max_output_tokens": max_out,
         }
         if request.system:
             config_args["system_instruction"] = request.system
+        # Gemini accepts a custom temperature alongside thinking.
         if request.temperature is not None:
             config_args["temperature"] = request.temperature
 
@@ -46,6 +52,11 @@ class GeminiProvider(LLMProvider):
             config_args["response_json_schema"] = request.schema
         elif request.json_mode:
             config_args["response_mime_type"] = "application/json"
+
+        if reasoning_on:
+            config_args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=gemini_thinking_budget(request.reasoning, request.model)
+            )
 
         config = types.GenerateContentConfig(**config_args)
 

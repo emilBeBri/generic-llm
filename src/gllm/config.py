@@ -13,12 +13,12 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 
 def work_env() -> bool:
-    """Corporate/Azure "work" mode.
+    """Corporate/Azure "work" mode toggle. Default off.
 
-    In bebri-chat this is the `WORK_ENV` setting; here it doubles as an
-    ergonomic per-invocation flag, so `WORK=1 gllm -m claude-opus-4-7-dev ...`
-    works too. When on, the Azure Anthropic adapter forces maximum extended
-    thinking (see adapters/azure_anthropic.py). `WORK` wins over `WORK_ENV`.
+    In bebri-chat this is the `WORK_ENV` setting; here `WORK=1` also works as an
+    ergonomic per-invocation flag (`WORK` wins over `WORK_ENV`). It selects the
+    Azure Foundry adapters over the direct providers. It has nothing to do with
+    reasoning — that is `--reasoning` (see gllm.reasoning).
     """
     val = (os.environ.get("WORK") or os.environ.get("WORK_ENV") or "").strip().lower()
     return val in _TRUTHY

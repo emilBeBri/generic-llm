@@ -77,18 +77,45 @@ a code change. The set below mirrors what `bebri-chat` exercises today:
 | Azure OpenAI (`-dev`) | `gpt-5{,-mini}-dev`, `gpt-5.1-dev`, `gpt-5.2-dev`, `gpt-5.4{,-pro}-dev`, `gpt-5.5-dev`, `o3-dev` |
 | Azure Anthropic (`-dev`) | `claude-opus-4-5/6/7/8-dev` |
 
-### WORK mode (Azure Anthropic forced thinking)
+### WORK mode (corporate / Azure)
 
-Set `WORK=1` (or `WORK_ENV=1`) to force maximum extended thinking on Azure
-Anthropic `-dev` models — adaptive thinking for Claude 4.6/4.7, a fixed budget
-for 4.5 and older. Azure Foundry doesn't expose Anthropic's `output_config`
-effort control, so this is the only thinking knob. It also bumps `max_tokens`
-and drops `temperature` (extended thinking pins it to 1). No effect on any
-other provider.
+`WORK=1` (or `WORK_ENV=1`) is the corporate/Azure switch — it redirects direct
+Anthropic/OpenAI models to their Azure Foundry deployment by appending the
+`-dev` marker. It has **nothing** to do with reasoning (that's `--reasoning`,
+below). Default off. No effect on Gemini/Grok/DeepSeek (no Azure variant).
 
 ```sh
-WORK=1 gllm -m claude-opus-4-8-dev "think hard about this"
+WORK=1 gllm -m claude-opus-4-8 "..."   # -> azure_anthropic, deployment claude-opus-4-8-dev
+WORK=1 gllm -m gpt-5.1 "..."           # -> azure_openai,    deployment gpt-5.1-dev
+gllm -m claude-opus-4-8 "..."          # -> anthropic (direct)
+gllm -m claude-opus-4-8-dev "..."      # -> azure_anthropic (explicit -dev, any WORK)
 ```
+
+## Reasoning effort
+
+`-r/--reasoning low|medium|high|xhigh` is one abstract knob that each provider
+translates to its native control. Omitting it is **hands-off** — no reasoning
+param is sent, so the provider's own default applies (no behaviour change).
+Passing it on a model with **no** reasoning control (gpt-4o, deepseek-v4) fails
+loudly with exit 2 rather than silently ignoring you.
+
+```sh
+gllm -r high  -m gpt-5.1 "tricky logic puzzle"
+gllm -r xhigh -m claude-opus-4-8 "prove it step by step"
+gllm -r low   -m gemini-3-pro-preview "quick sanity check"
+```
+
+| Provider | Native control | low → xhigh |
+|---|---|---|
+| OpenAI / Grok / Azure OpenAI (Responses) | `reasoning.effort` | the level, verbatim |
+| Anthropic / Azure Anthropic | `thinking` budget; adaptive at `xhigh` | budget 8k / 16k / 32k / max |
+| Gemini | `thinking_budget` | 4k / 8k / 16k / dynamic (`-1`) |
+| OpenAI Chat (gpt-4o), DeepSeek | none | unsupported → exit 2 |
+
+For Anthropic/OpenAI, setting a level also bumps `max_tokens` so reasoning
+doesn't starve the answer, and drops `temperature` (reasoning models reject a
+custom one). `xhigh` may exceed what an older model supports (e.g. some
+o-series, `grok-3-mini`) — that surfaces as a loud API 400.
 
 ## Usage
 
@@ -260,13 +287,14 @@ src/gllm/
 ├── domain.py           # Request, Response
 ├── ports.py            # LLMProvider ABC
 ├── routing.py          # model-name → provider
+├── reasoning.py        # --reasoning ladder → per-provider native shape
 └── adapters/
-    ├── _capabilities.py # OpenAI Responses-vs-Chat dispatch (shared)
+    ├── _capabilities.py # Responses-vs-Chat dispatch + capability gates (shared)
     ├── anthropic.py     # output_config.format json_schema
     ├── openai.py        # Responses + Chat Completions, json_schema
     ├── gemini.py        # response_json_schema
     ├── deepseek.py      # OpenAI-compatible @ api.deepseek.com
     ├── grok.py          # OpenAIProvider subclass @ api.x.ai/v1
     ├── azure_openai.py  # OpenAIProvider subclass @ Foundry MaaS
-    └── azure_anthropic.py # AnthropicFoundry + WORK-mode thinking
+    └── azure_anthropic.py # AnthropicFoundry + native thinking
 ```
