@@ -58,9 +58,8 @@ def anthropic_thinking(level: str, model: str) -> dict:
     adaptive family, an ``"effort"`` string (= our ladder, 1:1). The caller sets
     ``kwargs["thinking"]``, raises ``max_tokens`` to at least ``min_max_tokens``,
     and drops temperature. When ``"effort"`` is present it is graded via
-    ``output_config.effort`` — but ONLY on the direct Anthropic API; Azure
-    Foundry has no `output_config`, so there every level collapses to default
-    adaptive thinking. 4.5 and older use the old ``enabled``+``budget_tokens``.
+    ``output_config.effort`` on both the direct Anthropic API and Azure Foundry
+    (both expose `output_config`). 4.5 and older use ``enabled``+``budget_tokens``.
     """
     _check(level)
     m = model.lower()

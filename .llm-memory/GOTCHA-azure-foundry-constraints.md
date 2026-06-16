@@ -10,11 +10,16 @@ Both Azure adapters share `AZURE_FOUNDRY_ENDPOINT`; keys differ (`AZURE_OPENAI_A
 
 `azure_anthropic._normalize_foundry_url` rewrites an **Agents** endpoint (`*.services.ai.azure.com`, `*.cognitiveservices.azure.com`) to the resource's `*.openai.azure.com` MaaS host, then appends `/anthropic`. Azure OpenAI just appends `/v1/` (NOT the classic `/openai/deployments/...` — that's Azure OpenAI *Service*, not Foundry MaaS).
 
-## Azure Anthropic has no `output_config`
+## Azure Anthropic DOES support `output_config` (corrected 2026-06-17)
 
-Direct Anthropic uses native `output_config.format = json_schema` for structured output. **Azure Foundry does not support it.** So `azure_anthropic.py` emulates `--schema`/`--json` by injecting an instruction into the system prompt (pasting the schema text for `--schema`) — the same fallback the direct adapter uses for bare `--json`.
+**Earlier belief — now falsified.** The bebri-chat port assumed "Azure Foundry has no `output_config`", and gllm refused `--schema` and dropped reasoning `effort` on Azure on that basis. **Microsoft's current docs contradict this** (verified 2026-06-17):
 
-No `output_config` also means **no reasoning effort grading on Azure.** Modern Claude (4.6+) grades `--reasoning` via `output_config.effort` on the direct API; Azure can't, so `azure_anthropic` drops `effort` and every level collapses to default `thinking.adaptive`. (It can't fall back to `enabled`+`budget_tokens` either — 4.6+ reject that shape with a 400; see [[ADR-reasoning-effort-ladder]].)
+- [concepts/claude-models](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models) lists **Effort** as a first-class capability with a per-model `low/medium/high/max/xhigh` table, and an Extended-thinking table for `thinking` types.
+- Every example on [how-to/use-foundry-models-claude](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude) (Python/JS/REST) passes `output_config={"effort": "max"}` alongside `thinking={"type":"adaptive"}`.
+
+So `azure_anthropic.py` now handles `output_config` like the direct adapter: sends `output_config.effort` for `--reasoning` (graded, 1:1 with the ladder) and `output_config.format` json_schema for `--schema`, both via `extra_body`.
+
+**Still UNVERIFIED:** `output_config.format` (strict structured output) is **not mentioned** in either Foundry doc — only `effort` is. The capability list includes Effort but NOT "structured outputs". So `--schema` on Azure is an *optimistic native attempt*; if Foundry doesn't support `format`, the API 400s loudly (never faked). No Azure keys on the personal box, so this needs a work-box smoke test — see `AZURE-FOUNDRY-SMOKE-TEST.md` in the repo root. DeepSeek remains the only true `--schema` faker (refused).
 
 ## WORK mode (`config.work_env`) — a routing toggle, NOT a thinking knob
 

@@ -4,22 +4,26 @@ Claude served through Azure AI Foundry via the `AnthropicFoundry` client.
 Model names carry a `-dev` suffix (e.g. `claude-opus-4-7-dev`), which routing
 uses to pick this adapter over the direct Anthropic one.
 
-It diverges from the direct Anthropic adapter on one point:
+Foundry exposes `output_config` (verified against Microsoft's docs, 2026-06-12:
+learn.microsoft.com/.../foundry-models/concepts/claude-models lists Effort as a
+capability, and every example on .../how-to/use-foundry-models-claude passes
+`output_config={"effort": ...}`). So this adapter handles output_config the same
+way as the direct Anthropic one:
 
-- **No `output_config`.** Azure does not support Anthropic's native
-  `output_config.format = json_schema`, so `--schema`/`--json` are emulated
-  with an instruction injected into the system prompt (same as the direct
-  adapter's json_mode fallback).
+- `output_config.effort` for `--reasoning` (documented-supported on Foundry).
+- `output_config.format` json_schema for `--schema` — **attempted natively, but
+  NOT yet documented/verified on Foundry.** If Foundry rejects it the API 400s
+  loudly (we never fake enforcement). See AZURE-FOUNDRY-SMOKE-TEST.md for the
+  verification a work-box agent should run.
+- `--json` (no schema) → instruction, same as direct: the Anthropic API has no
+  schemaless json-object mode.
 
-Reasoning is handled exactly like the direct adapter: `--reasoning` is
-translated to a native `thinking` block (see ..reasoning). We always stream and
-take the final message — long thinking generations can outrun a non-streaming
-socket timeout; only text blocks are returned (thinking blocks are discarded).
+We always stream and take the final message — long thinking generations can
+outrun a non-streaming socket timeout; only text blocks are returned.
 """
 
 from __future__ import annotations
 
-import json
 import os
 
 from ..domain import Request, Response
@@ -67,40 +71,42 @@ class AzureAnthropicProvider(LLMProvider):
 
     def generate(self, request: Request) -> Response:
         content = _anthropic_content(request.prompt, request.attachments)
+        reasoning_on = request.reasoning is not None
         kwargs: dict = {
             "model": request.model,
             "max_tokens": request.max_tokens,
             "messages": [{"role": "user", "content": content}],
         }
+        if request.system:
+            kwargs["system"] = request.system
+        # Extended thinking pins temperature to 1; only set it otherwise.
+        if request.temperature is not None and not reasoning_on:
+            kwargs["temperature"] = request.temperature
 
-        # Azure has no native json_schema; emulate via a system instruction.
-        system = request.system
-        if request.schema is not None:
-            schema_txt = json.dumps(request.schema, indent=2)
-            extra = (
-                "Respond with valid JSON only, matching this JSON Schema. "
-                "No prose, no code fences.\n\n" + schema_txt
-            )
-            system = f"{system}\n\n{extra}" if system else extra
-        elif request.json_mode:
-            extra = "Respond with valid JSON only. No prose, no code fences."
-            system = f"{system}\n\n{extra}" if system else extra
-        if system:
-            kwargs["system"] = system
-
-        # Reasoning via --reasoning, translated to the native thinking block.
-        # Azure Foundry has no `output_config`, so the adaptive family's `effort`
-        # (r["effort"]) can't be graded here — every level collapses to default
-        # adaptive thinking. We deliberately drop it rather than 400.
-        thinking_on = request.reasoning is not None
-        if thinking_on:
+        effort: str | None = None
+        if reasoning_on:
             r = anthropic_thinking(request.reasoning, request.model)
             kwargs["thinking"] = r["thinking"]
             kwargs["max_tokens"] = max(kwargs["max_tokens"], r["min_max_tokens"])
+            effort = r.get("effort")
 
-        # Extended thinking pins temperature to 1; only set it otherwise.
-        if request.temperature is not None and not thinking_on:
-            kwargs["temperature"] = request.temperature
+        # output_config carries both structured-output `format` and reasoning
+        # `effort`, passed via extra_body (the SDK has no top-level param). Same
+        # as the direct adapter — Foundry documents `effort`; `format` is an
+        # unverified native attempt (see AZURE-FOUNDRY-SMOKE-TEST.md).
+        output_config: dict = {}
+        if request.schema is not None:
+            output_config["format"] = {"type": "json_schema", "schema": request.schema}
+        elif request.json_mode:
+            # The Anthropic API has no schemaless json mode; instruct instead.
+            extra = "Respond with valid JSON only. No prose, no code fences."
+            kwargs["system"] = (
+                f"{request.system}\n\n{extra}" if request.system else extra
+            )
+        if effort is not None:
+            output_config["effort"] = effort
+        if output_config:
+            kwargs["extra_body"] = {"output_config": output_config}
 
         with self.client.messages.stream(**kwargs) as stream:
             msg = stream.get_final_message()

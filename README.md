@@ -108,19 +108,18 @@ gllm -r low   -m gemini-3.5-flash "quick sanity check"
 | Provider | Native control | low → xhigh |
 |---|---|---|
 | OpenAI / Grok / Azure OpenAI (Responses) | `reasoning.effort` | the level, verbatim |
-| Anthropic 4.6/4.7/4.8 (direct) | `thinking.adaptive` + `output_config.effort` | the level, verbatim |
+| Anthropic 4.6/4.7/4.8 (direct + Azure) | `thinking.adaptive` + `output_config.effort` | the level, verbatim |
 | Anthropic 4.5 & older | `thinking` budget | 8k / 16k / 32k / 32k |
-| Azure Anthropic | `thinking.adaptive` (no `output_config`) | level not graded — default adaptive |
 | Gemini | `thinking_budget` | 4k / 8k / 16k / dynamic (`-1`) |
 | OpenAI Chat (gpt-4o), DeepSeek | none | unsupported → exit 2 |
 
 For Anthropic/OpenAI, setting a level also bumps `max_tokens` so reasoning
 doesn't starve the answer, and drops `temperature` (reasoning models reject a
-custom one). Two real constraints (found by live testing): modern Claude
+custom one). One real constraint (found by live testing): modern Claude
 (4.6+) **rejects** the old `thinking.type=enabled` budget shape — it needs
-`adaptive` + `output_config.effort`, and Azure Foundry has no `output_config`
-so it can't grade effort there. `xhigh` may also exceed what an older model
-supports (some o-series, `grok-3-mini`) — a loud API 400.
+`adaptive` + `output_config.effort`. Azure Foundry supports `output_config.effort`
+too (per Microsoft's docs), so effort grades there as well. `xhigh` may exceed
+what an older model supports (some o-series, `grok-3-mini`) — a loud API 400.
 
 ## Usage
 
@@ -153,6 +152,39 @@ gllm --schema '{"type":"object","properties":{"x":{"type":"integer"}},"required"
 # Verbose (provider/model/tokens to stderr)
 gllm -v "hello" 2>>gllm.log
 ```
+
+## JSON & structured output
+
+Two flags, two different promises:
+
+- **`--json`** — "give me JSON, *any* shape." The model picks the fields.
+- **`--schema`** — "give me JSON in *exactly this* shape." You hand it a blueprint; the output is forced to match.
+
+```sh
+# --json: you don't say the shape
+gllm --json "give me a person"
+# {"name": "Alice", "age": 30}           ← one run
+# {"full_name": "Alice", "years_old": 30} ← another run: keys can change
+
+# --schema: you give the exact shape
+gllm --schema '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}},"required":["name","age"],"additionalProperties":false}' "give me a person"
+# {"name": "Alice", "age": 30}           ← same keys + types, EVERY run
+```
+
+| | what you ask for | what you get |
+|---|---|---|
+| `--json` | "some JSON" | valid JSON, **shape not guaranteed** |
+| `--schema` | "JSON like *this*" | valid JSON, **exact shape guaranteed** |
+
+Analogy: `--json` is "write me a note in JSON." `--schema` is "fill out *this form*" — you give it the blank form (`name: ___`, `age: ___`) and it must fill those exact blanks.
+
+**When to use which:** `--json` for quick stuff you'll read with your own eyes; `--schema` when a program/script parses the output and needs the same fields every time (piping into `jq`, loading into code).
+
+**Why `--schema` sometimes errors:** strict shape enforcement is a native API feature — gllm uses it on Anthropic, OpenAI, Azure-OpenAI, Gemini, and Grok. **DeepSeek can't** force the shape (no native schema mode); it can only be *asked nicely* in the prompt, with no guarantee. Rather than hand you JSON that looks enforced but isn't, gllm **refuses `--schema`** on DeepSeek (exit 2) and tells you to use `--json` or a model with native support. `--json` (the looser ask) still works there — it never promised an exact shape.
+
+> Azure Anthropic (Foundry) exposes `output_config`, so `--schema` is attempted natively there too — but Foundry's `output_config.format` (strict schema) is undocumented and not yet verified; if it isn't supported the API fails loudly rather than faking. See `AZURE-FOUNDRY-SMOKE-TEST.md`.
+
+Schema source: inline JSON, `@path/to/schema.json`, or a bare path ending in `.json`. See [Schema convention](#schema-convention-all-required--empty-string-sentinel) for the all-required authoring rule.
 
 ## File inputs
 

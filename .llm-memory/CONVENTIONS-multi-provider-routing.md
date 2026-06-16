@@ -34,8 +34,8 @@ DeepSeek, Grok, and Azure OpenAI all speak the OpenAI wire protocol. Rather than
 
 ## Anthropic family thinking — 4-6 / 4-7 / 4-8 are one bucket
 
-`reasoning._is_adaptive_family` treats Claude **4-6, 4-7, and 4-8** identically: `thinking={type:"adaptive", display:"summarized"}`, `max_tokens=64000`, with the effort graded by `output_config.effort` (= the `--reasoning` level) on the direct API. These models **reject** the old `enabled`+`budget_tokens` shape (live-verified 400 — see [[ADR-reasoning-effort-ladder]] and [[GOTCHA-azure-foundry-constraints]]); 4-5 & older still use it. When a new family lands (4-9, 5-x), add it to `_is_adaptive_family`. `display:"summarized"` is mandatory on 4-7+ (default flipped to `omitted`, which suppresses streaming thinking deltas — terminal looks hung).
+`reasoning._is_adaptive_family` treats Claude **4-6, 4-7, and 4-8** identically: `thinking={type:"adaptive", display:"summarized"}`, `max_tokens=64000`, with the effort graded by `output_config.effort` (= the `--reasoning` level) on **both** the direct API and Azure Foundry (Foundry supports `effort` — see [[GOTCHA-azure-foundry-constraints]]). These models **reject** the old `enabled`+`budget_tokens` shape (live-verified 400 — see [[ADR-reasoning-effort-ladder]]); 4-5 & older still use it. When a new family lands (4-9, 5-x), add it to `_is_adaptive_family`. `display:"summarized"` is mandatory on 4-7+ (default flipped to `omitted`, which suppresses streaming thinking deltas — terminal looks hung).
 
 ## Related
-- [[GOTCHA-azure-foundry-constraints]] — what the two Azure adapters have to work around (no `output_config`, the `WORK` routing toggle, endpoint rewriting).
+- [[GOTCHA-azure-foundry-constraints]] — Azure adapter specifics (Foundry DOES expose `output_config`; `effort` verified, `format` an unverified attempt; the `WORK` routing toggle; endpoint rewriting).
 - [[CONVENTIONS-schemas-and-instructions]] — the json_schema strict-mode convention these adapters consume.

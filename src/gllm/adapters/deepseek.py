@@ -9,14 +9,14 @@ field alongside `content`. gllm is one-shot and prints only the final text,
 so we discard reasoning and don't touch the thinking config (API default).
 
 Structured output: DeepSeek has no native json_schema/strict mode — only
-`response_format={"type": "json_object"}`. So a `--schema` is honoured on a
-best-effort basis by switching on json_object and pasting the schema into the
-system prompt; `--json` just flips json_object on.
+`response_format={"type": "json_object"}`. `--json` flips that on (best-effort
+JSON). `--schema` (which promises *enforced* structure) is REFUSED — we will not
+fake strict enforcement with a prompt instruction. The CLI gates this earlier
+(supports_strict_schema); the raise here is the library-use backstop.
 """
 
 from __future__ import annotations
 
-import json
 import os
 
 from openai import OpenAI
@@ -43,18 +43,17 @@ class DeepSeekProvider(LLMProvider):
                 "or document API). Try a vision-capable model like "
                 "claude-opus-4-8, gpt-5, or gemini-3.1-pro-preview."
             )
-        system = request.system
         if request.schema is not None:
-            schema_txt = json.dumps(request.schema, indent=2)
-            extra = (
-                "Respond with valid JSON only, matching this JSON Schema. "
-                "No prose, no code fences.\n\n" + schema_txt
+            raise RuntimeError(
+                "deepseek has no native JSON-schema enforcement (only "
+                "response_format=json_object); --schema would be faked via a "
+                "prompt instruction with no guarantee. Refusing. Use --json for "
+                "best-effort JSON instead."
             )
-            system = f"{system}\n\n{extra}" if system else extra
 
         messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
+        if request.system:
+            messages.append({"role": "system", "content": request.system})
         messages.append({"role": "user", "content": request.prompt})
 
         kwargs: dict = {
@@ -64,7 +63,7 @@ class DeepSeekProvider(LLMProvider):
         }
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
-        if request.schema is not None or request.json_mode:
+        if request.json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
         resp = self.client.chat.completions.create(**kwargs)

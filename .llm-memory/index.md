@@ -9,7 +9,7 @@ Persistent project knowledge for `generic-llm` (the `gllm` CLI).
 
 ## Architecture / gotchas
 - [ADR-reasoning-effort-ladder.md](ADR-reasoning-effort-ladder.md) — the `-r/--reasoning low/medium/high/xhigh` knob: one abstract ladder translated per provider (`reasoning.py`), `supports_reasoning` fail-loud gate, hands-off default, and `WORK=1` ≡ the `xhigh` rung.
-- [GOTCHA-azure-foundry-constraints.md](GOTCHA-azure-foundry-constraints.md) — Azure Foundry quirks: no `output_config` (JSON emulated via instruction), endpoint rewriting, and the `WORK=1`/`WORK_ENV` direct-vs-Azure routing toggle (`effective_model` appends `-dev`).
+- [GOTCHA-azure-foundry-constraints.md](GOTCHA-azure-foundry-constraints.md) — Azure Foundry specifics: it DOES expose `output_config` (`effort` verified, `format` an unverified native attempt — corrected 2026-06-17), endpoint rewriting, and the `WORK=1`/`WORK_ENV` direct-vs-Azure routing toggle (`effective_model` appends `-dev`).
 
 ## Ideas / future features
 - [IDEAS-key-loading-secret-managers.md](IDEAS-key-loading-secret-managers.md) — `--keys-from pass:...` / sops / keyring integration. Not built in v1.

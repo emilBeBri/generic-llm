@@ -22,7 +22,12 @@ import sys
 from pathlib import Path
 
 from . import reasoning as reasoning_mod
-from .adapters._capabilities import supports_image, supports_pdf, supports_reasoning
+from .adapters._capabilities import (
+    supports_image,
+    supports_pdf,
+    supports_reasoning,
+    supports_strict_schema,
+)
 from .config import work_env
 from .domain import Attachment, Request
 from .ports import LLMProvider
@@ -330,6 +335,20 @@ def main(argv: list[str] | None = None) -> int:
             f"gllm: {provider_name} model {args.model!r} has no reasoning "
             f"control; drop --reasoning or use a reasoning-capable model "
             f"(gpt-5/o-series, claude-*, gemini-*, grok-*).",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Strict-or-fail: --schema promises enforced structured output. Refuse it on
+    # providers that can only fake it via prompt instructions (no guarantee) —
+    # better a loud error than a false sense of enforcement. --json (best-effort)
+    # is still fine there.
+    if schema is not None and not supports_strict_schema(provider_name, args.model):
+        print(
+            f"gllm: {provider_name} model {args.model!r} has no native JSON-"
+            f"schema enforcement; --schema would only be faked via prompt "
+            f"instructions (no guarantee). Use --json for best-effort JSON, or "
+            f"a model with native support (claude-*, gpt-*, gemini-*, grok-*).",
             file=sys.stderr,
         )
         return 2

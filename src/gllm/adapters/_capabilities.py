@@ -72,3 +72,26 @@ def supports_reasoning(provider: str, model: str) -> bool:
         return use_responses_api(model)
     # deepseek and anything unknown: no control surface.
     return False
+
+
+# Providers whose API NATIVELY enforces a JSON Schema (strict structured
+# output) via the real API rather than a prompt instruction. gllm refuses
+# `--schema` on anything NOT here, rather than fake enforcement.
+#   * azure_anthropic — Foundry exposes `output_config`; the `format=json_schema`
+#     path is attempted natively but not yet verified (see
+#     AZURE-FOUNDRY-SMOKE-TEST.md). If Foundry rejects it, the API 400s loudly.
+#   * deepseek — the one true faker: no json_schema mode, only
+#     `response_format=json_object`. Kept out so `--schema` errors there.
+_STRICT_SCHEMA_PROVIDERS = {
+    "anthropic",
+    "azure_anthropic",
+    "openai",
+    "azure_openai",
+    "gemini",
+    "grok",
+}
+
+
+def supports_strict_schema(provider: str, model: str) -> bool:
+    """Does this provider natively ENFORCE a `--schema` (not just instruct)?"""
+    return provider in _STRICT_SCHEMA_PROVIDERS

@@ -40,3 +40,21 @@ def test_pdf_capability_matrix():
     # Grok / DeepSeek: never.
     assert not supports_pdf("grok", "grok-4.3")
     assert not supports_pdf("deepseek", "deepseek-v4-flash")
+
+
+def test_strict_schema_matrix():
+    from gllm.adapters._capabilities import supports_strict_schema
+
+    # Native json_schema enforcement.
+    assert supports_strict_schema("anthropic", "claude-opus-4-8")
+    assert supports_strict_schema("openai", "gpt-5.1")
+    assert supports_strict_schema("openai", "gpt-4o")  # response_format json_schema
+    assert supports_strict_schema("azure_openai", "gpt-4o-dev")
+    assert supports_strict_schema("gemini", "gemini-3.1-pro-preview")
+    assert supports_strict_schema("grok", "grok-4")
+    # Azure Foundry exposes output_config; --schema is attempted natively
+    # (verification pending — see AZURE-FOUNDRY-SMOKE-TEST.md).
+    assert supports_strict_schema("azure_anthropic", "claude-opus-4-8-dev")
+
+    # DeepSeek: the one real faker (no json_schema mode) — must stay refused.
+    assert not supports_strict_schema("deepseek", "deepseek-v4-flash")
