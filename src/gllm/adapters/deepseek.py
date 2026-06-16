@@ -41,7 +41,7 @@ class DeepSeekProvider(LLMProvider):
             raise RuntimeError(
                 "deepseek does not accept file attachments (no native image "
                 "or document API). Try a vision-capable model like "
-                "claude-opus-4-8, gpt-5, or gemini-3-pro-preview."
+                "claude-opus-4-8, gpt-5, or gemini-3.1-pro-preview."
             )
         system = request.system
         if request.schema is not None:

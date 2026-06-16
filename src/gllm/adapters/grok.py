@@ -37,6 +37,6 @@ class GrokProvider(OpenAIProvider):
             if a.mime_type == "application/pdf":
                 raise RuntimeError(
                     "grok does not accept PDF attachments. Try claude-opus-4-8, "
-                    "a gpt-5/o-series model, or gemini-3-pro-preview."
+                    "a gpt-5/o-series model, or gemini-3.1-pro-preview."
                 )
         return super().generate(request)

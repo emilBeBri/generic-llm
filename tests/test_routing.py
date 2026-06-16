@@ -38,9 +38,8 @@ def test_full_bebri_chat_model_set():
         "o3-mini": "openai",
         "o4-mini": "openai",
         "codex-mini-latest": "openai",
-        "gemini-3-pro-preview": "gemini",
-        "gemini-3-flash-lite": "gemini",
-        "gemini-3-deep-think-preview": "gemini",
+        "gemini-3.1-pro-preview": "gemini",
+        "gemini-3.5-flash": "gemini",
         "deepseek-v4-pro": "deepseek",
         "deepseek-v4-flash": "deepseek",
         "grok-4.3": "grok",
@@ -75,5 +74,5 @@ def test_work_does_not_double_suffix_or_touch_explicit_dev():
 
 
 def test_work_leaves_non_azure_providers_alone():
-    for m in ["gemini-3-pro-preview", "grok-4", "deepseek-v4-flash"]:
+    for m in ["gemini-3.5-flash", "grok-4", "deepseek-v4-flash"]:
         assert effective_model(m, True) == m

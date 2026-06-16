@@ -71,7 +71,7 @@ a code change. The set below mirrors what `bebri-chat` exercises today:
 |---|---|
 | Anthropic | `claude-opus-4-5/6/7/8`, `claude-sonnet-4-5/6`, `claude-haiku-4-5/6` |
 | OpenAI | `gpt-5{,-mini,-nano,-pro}`, `gpt-5.1{,-codex,-chat-latest}`, `gpt-5.2{,-pro,-chat-latest}`, `gpt-5-codex`, `codex-mini-latest`, `gpt-4.1{,-mini,-nano}`, `gpt-4o{,-mini}`, `o1{,-pro,-mini}`, `o3{,-pro,-mini,-deep-research}`, `o4-mini{,-deep-research}` |
-| Gemini | `gemini-3-pro-preview`, `gemini-3-flash`, `gemini-3-flash-lite`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `gemini-3-deep-think-preview` |
+| Gemini | `gemini-3.1-pro-preview`, `gemini-3.5-flash` |
 | DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
 | xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309`, `grok-build-0.1` |
 | Azure OpenAI (`-dev`) | `gpt-5{,-mini}-dev`, `gpt-5.1-dev`, `gpt-5.2-dev`, `gpt-5.4{,-pro}-dev`, `gpt-5.5-dev`, `o3-dev` |
@@ -102,7 +102,7 @@ loudly with exit 2 rather than silently ignoring you.
 ```sh
 gllm -r high  -m gpt-5.1 "tricky logic puzzle"
 gllm -r xhigh -m claude-opus-4-8 "prove it step by step"
-gllm -r low   -m gemini-2.5-pro "quick sanity check"
+gllm -r low   -m gemini-3.5-flash "quick sanity check"
 ```
 
 | Provider | Native control | low → xhigh |
@@ -137,7 +137,7 @@ cat README.md | gllm "summarize this in one sentence"
 # Pick a model (provider auto-detected from the name)
 gllm -m claude-opus-4-8 "explain monads"
 gllm -m gpt-5-nano "..."
-gllm -m gemini-3-flash-preview "..."
+gllm -m gemini-3.5-flash "..."
 
 # System prompt
 gllm -s "you are terse" "what is the meaning of life?"
@@ -168,7 +168,7 @@ gllm -m claude-opus-4-8 -f ./cat.png "describe this"
 curl -s https://example.com/img.jpg | gllm -f - --mime image/jpeg "describe"
 
 # Process substitution — totally Unix, no special code in gllm
-gllm -m gemini-3-pro-preview -f <(curl -s https://example.com/x.png) "ocr"
+gllm -m gemini-3.1-pro-preview -f <(curl -s https://example.com/x.png) "ocr"
 
 # Multiple files in one call
 gllm -m claude-opus-4-8 -f a.pdf -f b.pdf "what's different?"

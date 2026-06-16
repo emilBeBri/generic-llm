@@ -72,10 +72,10 @@ def test_anthropic_xhigh_per_family():
 
 
 def test_gemini_budgets_increase_then_dynamic():
-    assert gemini_thinking_budget("low", "gemini-3-pro-preview") == 4096
-    assert gemini_thinking_budget("medium", "gemini-3-pro-preview") == 8192
-    assert gemini_thinking_budget("high", "gemini-3-pro-preview") == 16384
-    assert gemini_thinking_budget("xhigh", "gemini-3-pro-preview") == -1
+    assert gemini_thinking_budget("low", "gemini-3.1-pro-preview") == 4096
+    assert gemini_thinking_budget("medium", "gemini-3.1-pro-preview") == 8192
+    assert gemini_thinking_budget("high", "gemini-3.1-pro-preview") == 16384
+    assert gemini_thinking_budget("xhigh", "gemini-3.1-pro-preview") == -1
 
 
 # --- supports_reasoning ------------------------------------------------------
@@ -86,7 +86,7 @@ def test_gemini_budgets_increase_then_dynamic():
     [
         ("anthropic", "claude-opus-4-8", True),
         ("azure_anthropic", "claude-opus-4-8-dev", True),
-        ("gemini", "gemini-3-pro-preview", True),
+        ("gemini", "gemini-3.1-pro-preview", True),
         ("openai", "gpt-5.1", True),
         ("openai", "o3", True),
         ("openai", "gpt-4o", False),

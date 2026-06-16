@@ -29,7 +29,7 @@ def test_pdf_capability_matrix():
     # Anthropic and Gemini support PDFs on every model.
     assert supports_pdf("anthropic", "claude-opus-4-8")
     assert supports_pdf("azure_anthropic", "claude-opus-4-8-dev")
-    assert supports_pdf("gemini", "gemini-3-pro-preview")
+    assert supports_pdf("gemini", "gemini-3.1-pro-preview")
 
     # OpenAI: PDFs only on the Responses API path.
     assert supports_pdf("openai", "gpt-5")
