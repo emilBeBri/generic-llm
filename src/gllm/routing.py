@@ -30,6 +30,9 @@ def provider_for(model: str) -> str:
         return "deepseek"
     if "grok" in m:
         return "grok"
+    # Z.AI / GLM. 'glm' collides with nothing else in the registry.
+    if "glm" in m:
+        return "zai"
     # gpt-*, o1, o3, o4, codex, ...
     return "openai"
 

@@ -1,4 +1,6 @@
 from gllm.adapters._capabilities import (
+    glm_supports_reasoning_effort,
+    is_glm_vision_model,
     is_text_generation_model,
     supports_image,
     supports_pdf,
@@ -23,7 +25,24 @@ def test_image_capability_matrix():
     assert supports_image("azure_openai")
     assert supports_image("gemini")
     assert supports_image("grok")
+    # GLM has vision models, but the per-model split is enforced in the adapter.
+    assert supports_image("zai")
     assert not supports_image("deepseek")
+
+
+def test_glm_vision_split():
+    # Vision models take images; text GLMs do not.
+    for m in ["glm-5v-turbo", "glm-4.6v", "glm-4.6v-flash", "glm-4.5v", "glm-ocr"]:
+        assert is_glm_vision_model(m), m
+    for m in ["glm-5.2", "glm-4.6", "glm-4.7-flash", "glm-4-32b-0414-128k"]:
+        assert not is_glm_vision_model(m), m
+
+
+def test_glm_reasoning_effort_gated_to_5_2():
+    assert glm_supports_reasoning_effort("glm-5.2")
+    # Thinking on/off works on 4.5+, but reasoning_effort is 5.2-only.
+    for m in ["glm-5.1", "glm-5", "glm-4.7", "glm-4.6", "glm-4.6v"]:
+        assert not glm_supports_reasoning_effort(m), m
 
 
 def test_pdf_capability_matrix():
@@ -38,9 +57,10 @@ def test_pdf_capability_matrix():
     assert not supports_pdf("openai", "gpt-4o")
     assert not supports_pdf("openai", "gpt-4.1-mini")
 
-    # Grok / DeepSeek: never.
+    # Grok / DeepSeek / GLM: never (no native document input).
     assert not supports_pdf("grok", "grok-4.3")
     assert not supports_pdf("deepseek", "deepseek-v4-flash")
+    assert not supports_pdf("zai", "glm-4.6v")
 
 
 def test_text_generation_filter_keeps_chat_models():
@@ -100,5 +120,6 @@ def test_strict_schema_matrix():
     # (verification pending — see AZURE-FOUNDRY-SMOKE-TEST.md).
     assert supports_strict_schema("azure_anthropic", "claude-opus-4-8-dev")
 
-    # DeepSeek: the one real faker (no json_schema mode) — must stay refused.
+    # DeepSeek and GLM: json_object only (no native json_schema) — stay refused.
     assert not supports_strict_schema("deepseek", "deepseek-v4-flash")
+    assert not supports_strict_schema("zai", "glm-4.6")

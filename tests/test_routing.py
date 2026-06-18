@@ -45,6 +45,10 @@ def test_full_bebri_chat_model_set():
         "grok-4.3": "grok",
         "grok-4.20-multi-agent-0309": "grok",
         "grok-build-0.1": "grok",
+        "glm-5.2": "zai",
+        "glm-4.6": "zai",
+        "glm-4.6v": "zai",
+        "glm-ocr": "zai",
         "gpt-5.4-pro-dev": "azure_openai",
         "claude-opus-4-8-dev": "azure_anthropic",
     }
@@ -74,5 +78,5 @@ def test_work_does_not_double_suffix_or_touch_explicit_dev():
 
 
 def test_work_leaves_non_azure_providers_alone():
-    for m in ["gemini-3.5-flash", "grok-4", "deepseek-v4-flash"]:
+    for m in ["gemini-3.5-flash", "grok-4", "deepseek-v4-flash", "glm-5.2"]:
         assert effective_model(m, True) == m

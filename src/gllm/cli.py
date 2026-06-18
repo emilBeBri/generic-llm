@@ -163,6 +163,10 @@ def _build_provider(name: str) -> LLMProvider:
         from .adapters.grok import GrokProvider
 
         return GrokProvider()
+    if name == "zai":
+        from .adapters.zai import ZaiProvider
+
+        return ZaiProvider()
     if name == "azure_openai":
         from .adapters.azure_openai import AzureOpenAIProvider
 
@@ -177,7 +181,7 @@ def _build_provider(name: str) -> LLMProvider:
 # Providers whose live API exposes a model catalog we can probe. Azure Foundry
 # is excluded: it's deployment-scoped (you list *your* deployments, not a global
 # catalog), so it has no equivalent `models.list()`.
-_LISTABLE_PROVIDERS = ("anthropic", "openai", "gemini", "grok", "deepseek")
+_LISTABLE_PROVIDERS = ("anthropic", "openai", "gemini", "grok", "deepseek", "zai")
 
 
 def _run_models(which: str) -> int:

@@ -5,8 +5,8 @@ an optional positional prompt, prints the model's response to stdout. Errors
 and verbose logs go to stderr.
 
 Supports Anthropic (Claude), OpenAI (GPT / o-series / gpt-5), Google (Gemini),
-DeepSeek, xAI (Grok), and Azure AI Foundry (OpenAI + Anthropic). Provider is
-selected from the model name — see [Model routing](#model-routing).
+DeepSeek, xAI (Grok), Z.AI (GLM), and Azure AI Foundry (OpenAI + Anthropic).
+Provider is selected from the model name — see [Model routing](#model-routing).
 
 ## Install
 
@@ -33,6 +33,7 @@ Per provider:
 | Gemini | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) | |
 | DeepSeek | `DEEPSEEK_API_KEY` | |
 | xAI (Grok) | `XAI_API_KEY` | |
+| Z.AI (GLM) | `ZAI_API_KEY` | |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` |
 | Azure Anthropic | `AZURE_ANTHROPIC_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` |
 
@@ -53,11 +54,14 @@ the explicit Azure marker and is checked first.
 | contains `gemini` | `gemini` |
 | contains `deepseek` | `deepseek` |
 | contains `grok` | `grok` |
+| contains `glm` | `zai` (Z.AI / GLM) |
 | anything else (`gpt-*`, `o1/o3/o4`, `codex`) | `openai` |
 
 ```sh
 gllm -m deepseek-v4-pro "..."
 gllm -m grok-4.3 "..."
+gllm -m glm-5.2 -r high "..."         # Z.AI / GLM (ZAI_API_KEY)
+gllm -m glm-4.6v -f shot.png "..."    # GLM vision model
 gllm -m gpt-5.1-dev "..."             # Azure OpenAI (Foundry MaaS)
 gllm -m claude-opus-4-8-dev "..."     # Azure Anthropic (Foundry)
 ```
@@ -92,6 +96,7 @@ The families below are illustrative orientation, **not** an authoritative list �
 | Gemini | `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-3.1-pro-preview` |
 | DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
 | xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309` |
+| Z.AI / GLM | text: `glm-5.2` (reasoning_effort), `glm-5.1/5/4.7/4.6/4.5`; vision: `glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr` |
 | Azure OpenAI (`-dev`) | `gpt-5{,-mini}-dev`, `gpt-5.1-dev`, `gpt-5.2-dev`, `gpt-5.4{,-pro}-dev`, `gpt-5.5-dev`, `o3-dev` |
 | Azure Anthropic (`-dev`) | `claude-opus-4-5/6/7/8-dev` |
 
@@ -100,7 +105,7 @@ The families below are illustrative orientation, **not** an authoritative list �
 `WORK=1` (or `WORK_ENV=1`) is the corporate/Azure switch — it redirects direct
 Anthropic/OpenAI models to their Azure Foundry deployment by appending the
 `-dev` marker. It has **nothing** to do with reasoning (that's `--reasoning`,
-below). Default off. No effect on Gemini/Grok/DeepSeek (no Azure variant).
+below). Default off. No effect on Gemini/Grok/DeepSeek/GLM (no Azure variant).
 
 ```sh
 WORK=1 gllm -m claude-opus-4-8 "..."   # -> azure_anthropic, deployment claude-opus-4-8-dev
@@ -129,7 +134,9 @@ gllm -r low   -m gemini-3.5-flash "quick sanity check"
 | Anthropic 4.6/4.7/4.8 (direct + Azure) | `thinking.adaptive` + `output_config.effort` | the level, verbatim |
 | Anthropic 4.5 & older | `thinking` budget | 8k / 16k / 32k / 32k |
 | Gemini | `thinking_budget` | 4k / 8k / 16k / dynamic (`-1`) |
-| OpenAI Chat (gpt-4o), DeepSeek | none | unsupported → exit 2 |
+| Z.AI GLM-5.2 | `thinking.enabled` + `reasoning_effort` | the level, verbatim (`low`/`medium`→high, `xhigh`→max internally) |
+| Z.AI GLM 4.5–5.1 | `thinking.enabled` (binary) | thinking on; effort ignored |
+| OpenAI Chat (gpt-4o), DeepSeek, GLM (glm-ocr / glm-4-32b) | none | unsupported → exit 2 |
 
 For Anthropic/OpenAI, setting a level also bumps `max_tokens` so reasoning
 doesn't starve the answer, and drops `temperature` (reasoning models reject a
@@ -198,7 +205,7 @@ Analogy: `--json` is "write me a note in JSON." `--schema` is "fill out *this fo
 
 **When to use which:** `--json` for quick stuff you'll read with your own eyes; `--schema` when a program/script parses the output and needs the same fields every time (piping into `jq`, loading into code).
 
-**Why `--schema` sometimes errors:** strict shape enforcement is a native API feature — gllm uses it on Anthropic, OpenAI, Azure-OpenAI, Gemini, and Grok. **DeepSeek can't** force the shape (no native schema mode); it can only be *asked nicely* in the prompt, with no guarantee. Rather than hand you JSON that looks enforced but isn't, gllm **refuses `--schema`** on DeepSeek (exit 2) and tells you to use `--json` or a model with native support. `--json` (the looser ask) still works there — it never promised an exact shape.
+**Why `--schema` sometimes errors:** strict shape enforcement is a native API feature — gllm uses it on Anthropic, OpenAI, Azure-OpenAI, Gemini, and Grok. **DeepSeek and Z.AI/GLM can't** force the shape (both have only `response_format=json_object`, no native schema mode); it can only be *asked nicely* in the prompt, with no guarantee. Rather than hand you JSON that looks enforced but isn't, gllm **refuses `--schema`** there (exit 2) and tells you to use `--json` or a model with native support. `--json` (the looser ask) still works on both — it never promised an exact shape.
 
 > Azure Anthropic (Foundry) exposes `output_config`, so `--schema` is attempted natively there too — but Foundry's `output_config.format` (strict schema) is undocumented and not yet verified; if it isn't supported the API fails loudly rather than faking. See `AZURE-FOUNDRY-SMOKE-TEST.md`.
 
@@ -243,6 +250,7 @@ text-extraction fallback. Pick a model that fits the data.
 | OpenAI / Azure OpenAI (Chat: gpt-4*, gpt-3.5) | yes (`image_url`) | no |
 | Gemini | yes (inline Part) | yes (inline Part) |
 | xAI Grok | yes (inherits OpenAI Responses) | no |
+| Z.AI / GLM | vision models only (`glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr`; `image_url`) | no |
 | DeepSeek | no | no |
 
 Text files go through the existing `cat … \| gllm` pipe — `-f` is for the binary
@@ -349,6 +357,7 @@ src/gllm/
     ├── openai.py        # Responses + Chat Completions, json_schema
     ├── gemini.py        # response_json_schema
     ├── deepseek.py      # OpenAI-compatible @ api.deepseek.com
+    ├── zai.py           # GLM, OpenAI-compatible Chat @ api.z.ai (thinking + vision)
     ├── grok.py          # OpenAIProvider subclass @ api.x.ai/v1
     ├── azure_openai.py  # OpenAIProvider subclass @ Foundry MaaS
     └── azure_anthropic.py # AnthropicFoundry + native thinking

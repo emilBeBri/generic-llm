@@ -11,6 +11,9 @@ Providers disagree on the shape:
     at the top), plus a `max_tokens` floor — the budget must be strictly below
     max_tokens — and an unset temperature (extended thinking pins it to 1).
   * Gemini: a `thinking_budget` int (-1 = dynamic / model-capped).
+  * Z.AI / GLM: a `reasoning_effort` string (glm-5.2+ only), 1:1 with our ladder
+    — the API accepts low/medium/high/xhigh verbatim (collapsing low/medium->high
+    and xhigh->max internally). Paired with `thinking.type=enabled` in the adapter.
   * DeepSeek: no control surface — gated out upstream, never reaches here.
 """
 
@@ -95,3 +98,13 @@ def gemini_thinking_budget(level: str, model: str) -> int:
     for future per-model clamping; the API rejects out-of-range budgets loudly."""
     _check(level)
     return _GEMINI_BUDGETS[level]
+
+
+def zai_effort(level: str) -> str:
+    """Translate the ladder to a GLM `reasoning_effort` string (glm-5.2+ only).
+
+    Identity-with-validation, like `openai_effort`: GLM-5.2 accepts our exact
+    ladder values (low/medium/high/xhigh are all valid `reasoning_effort`
+    inputs) and collapses them itself (low/medium -> high, xhigh -> max). Only
+    sent when `glm_supports_reasoning_effort(model)` is true."""
+    return _check(level)

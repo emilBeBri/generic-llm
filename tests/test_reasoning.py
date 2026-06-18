@@ -12,6 +12,7 @@ from gllm.reasoning import (
     anthropic_thinking,
     gemini_thinking_budget,
     openai_effort,
+    zai_effort,
 )
 
 
@@ -26,6 +27,20 @@ def test_openai_effort_roundtrips(level):
 def test_openai_effort_rejects_unknown():
     with pytest.raises(ValueError):
         openai_effort("max")
+
+
+# --- zai_effort (GLM reasoning_effort) ---------------------------------------
+
+
+@pytest.mark.parametrize("level", LEVELS)
+def test_zai_effort_roundtrips(level):
+    # Identity-with-validation: GLM-5.2 accepts our ladder values verbatim.
+    assert zai_effort(level) == level
+
+
+def test_zai_effort_rejects_unknown():
+    with pytest.raises(ValueError):
+        zai_effort("max")
 
 
 # --- anthropic_thinking ------------------------------------------------------
@@ -93,6 +108,12 @@ def test_gemini_budgets_increase_then_dynamic():
         ("azure_openai", "gpt-4o-dev", False),
         ("grok", "grok-4", True),
         ("deepseek", "deepseek-v4-flash", False),
+        # GLM thinks across the 4.5+ line; glm-ocr / glm-4-32b have no thinking.
+        ("zai", "glm-5.2", True),
+        ("zai", "glm-4.6", True),
+        ("zai", "glm-4.6v", True),
+        ("zai", "glm-ocr", False),
+        ("zai", "glm-4-32b-0414-128k", False),
     ],
 )
 def test_supports_reasoning_truth_table(provider, model, expected):

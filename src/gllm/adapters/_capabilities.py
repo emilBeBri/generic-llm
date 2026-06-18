@@ -41,7 +41,39 @@ _IMAGE_PROVIDERS = {
     "azure_openai",
     "gemini",
     "grok",
+    # GLM has image-capable models, but vision lives in SEPARATE models — the
+    # zai adapter enforces the per-model split (text GLMs reject images).
+    "zai",
 }
+
+
+# --- GLM / Z.AI model-family capability splits ---
+# GLM scatters capabilities across model families rather than gating per-call,
+# so these prefix checks are the single source of truth, shared by the zai
+# adapter and the capability gates below.
+#   * Vision is a separate set of models (text GLMs reject image content).
+#   * Pre-4.5 / OCR models have no `thinking` block at all.
+#   * `reasoning_effort` is honoured only by glm-5.2+.
+_GLM_VISION_PREFIXES = ("glm-5v", "glm-4.6v", "glm-4.5v", "glm-ocr")
+_GLM_NO_THINKING_PREFIXES = ("glm-ocr", "glm-4-32b")
+
+
+def is_glm_vision_model(model: str) -> bool:
+    m = (model or "").lower()
+    return any(m.startswith(p) for p in _GLM_VISION_PREFIXES)
+
+
+def glm_supports_thinking(model: str) -> bool:
+    """GLM-4.5+ chat/vision models take `thinking.type`; glm-ocr and the pre-4.5
+    glm-4-32b do not — sending the block to them risks an error."""
+    m = (model or "").lower()
+    return not any(m.startswith(p) for p in _GLM_NO_THINKING_PREFIXES)
+
+
+def glm_supports_reasoning_effort(model: str) -> bool:
+    """Only glm-5.2 (and above) honour `reasoning_effort`; on every other GLM
+    thinking is a binary on/off and the field is meaningless."""
+    return (model or "").lower().startswith("glm-5.2")
 
 
 def supports_image(provider: str) -> bool:
@@ -70,6 +102,9 @@ def supports_reasoning(provider: str, model: str) -> bool:
         return True
     if provider in {"openai", "azure_openai", "grok"}:
         return use_responses_api(model)
+    if provider == "zai":
+        # GLM thinks across the 4.5+ line; glm-ocr / glm-4-32b have no thinking.
+        return glm_supports_thinking(model)
     # deepseek and anything unknown: no control surface.
     return False
 
