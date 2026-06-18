@@ -41,23 +41,37 @@ CONFIG_ENV_PATH = Path("/home/emil/prog/prj/bebri-chat/.env")
 
 def _load_user_env_file(path: Path) -> None:
     """Read KEY=value lines from `path` into os.environ (without overriding
-    anything already set). Silently no-ops if the file is missing."""
+    anything already set).
+
+    `path` is a configured key source, so a missing or unreadable file is
+    surfaced loudly on stderr instead of swallowed — otherwise it manifests
+    downstream as a baffling "missing API key" with no hint why (e.g. when a
+    sandbox doesn't bind-mount the file). We warn rather than abort: keys may
+    legitimately come from the inherited environment, and the per-adapter key
+    check is the real fatal gate."""
     if not path.is_file():
+        print(
+            f"gllm: key file not found at {path}; "
+            "relying on inherited environment for API keys.",
+            file=sys.stderr,
+        )
         return
     try:
-        for raw in path.read_text().splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            k = k.strip()
-            v = v.strip().strip('"').strip("'")
-            if k and k not in os.environ:
-                os.environ[k] = v
-    except OSError:
-        pass
+        text = path.read_text()
+    except OSError as e:
+        print(f"gllm: failed to read key file {path}: {e}", file=sys.stderr)
+        return
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if k and k not in os.environ:
+            os.environ[k] = v
 
 
 def _read_stdin_if_piped() -> str | None:
