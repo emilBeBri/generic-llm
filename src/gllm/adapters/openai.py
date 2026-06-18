@@ -24,7 +24,7 @@ from openai import OpenAI
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..reasoning import openai_effort
-from ._capabilities import use_responses_api
+from ._capabilities import is_text_generation_model, use_responses_api
 
 
 def _responses_input(prompt: str, attachments: tuple[Attachment, ...]):
@@ -107,6 +107,16 @@ class OpenAIProvider(LLMProvider):
         self.client = OpenAI(**client_kwargs)
         if name:
             self.name = name
+
+    def list_models(self) -> list[str]:
+        # `models.list()` returns the full catalog with no capability metadata,
+        # so filter non-text-generation families (embeddings/audio/image/
+        # moderation) by name. Inherited by Grok unchanged.
+        return sorted(
+            m.id
+            for m in self.client.models.list()
+            if is_text_generation_model(m.id)
+        )
 
     def generate(self, request: Request) -> Response:
         if use_responses_api(request.model):

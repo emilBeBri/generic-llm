@@ -23,6 +23,7 @@ from openai import OpenAI
 
 from ..domain import Request, Response
 from ..ports import LLMProvider
+from ._capabilities import is_text_generation_model
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
@@ -35,6 +36,15 @@ class DeepSeekProvider(LLMProvider):
         if not key:
             raise RuntimeError("DEEPSEEK_API_KEY is not set")
         self.client = OpenAI(api_key=key, base_url=DEEPSEEK_BASE_URL, max_retries=3)
+
+    def list_models(self) -> list[str]:
+        # OpenAI-compatible catalog endpoint; apply the same text-generation
+        # filter for consistency (DeepSeek's catalog is all chat today).
+        return sorted(
+            m.id
+            for m in self.client.models.list()
+            if is_text_generation_model(m.id)
+        )
 
     def generate(self, request: Request) -> Response:
         if request.attachments:

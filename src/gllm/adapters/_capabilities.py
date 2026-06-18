@@ -95,3 +95,48 @@ _STRICT_SCHEMA_PROVIDERS = {
 def supports_strict_schema(provider: str, model: str) -> bool:
     """Does this provider natively ENFORCE a `--schema` (not just instruct)?"""
     return provider in _STRICT_SCHEMA_PROVIDERS
+
+
+# `--models` filter. Two providers leak non-text models past their structured
+# signals: OpenAI-compatible `models.list()` carries no capability metadata at
+# all (just ids), and Gemini's `supported_actions` reports `generateContent` for
+# TTS/image/music models too. So we also blocklist by name: these substrings
+# flag the non-text-generation families (embeddings, speech, image, video,
+# music, robotics, computer-use, moderation). Substring match on the lowercased
+# id. Heuristic by necessity: a genuinely new text model carrying one of these
+# tokens would be wrongly hidden — the accepted cost of name-based filtering.
+_NON_TEXT_GEN_MARKERS = (
+    "embedding",
+    "embed-",
+    "tts",
+    "whisper",
+    "dall-e",
+    "moderation",
+    "-audio",
+    "audio-",
+    "-image",
+    "image-",
+    "-realtime",
+    "realtime-",
+    "-transcribe",
+    "transcribe-",
+    "imagen",
+    "veo",
+    "sora",
+    "video",
+    "imagine",
+    "lyria",
+    "nano-banana",
+    "robotics",
+    "computer-use",
+    "music",
+)
+
+
+def is_text_generation_model(model_id: str) -> bool:
+    """Heuristic: is this model id a text-generation chat/responses model (not
+    embeddings/audio/image/video/music/moderation)? Used ONLY to filter
+    `--models` output — dispatch never consults it, so a false negative here
+    hides a row but never blocks a real call."""
+    m = (model_id or "").lower()
+    return not any(marker in m for marker in _NON_TEXT_GEN_MARKERS)

@@ -62,18 +62,36 @@ gllm -m gpt-5.1-dev "..."             # Azure OpenAI (Foundry MaaS)
 gllm -m claude-opus-4-8-dev "..."     # Azure Anthropic (Foundry)
 ```
 
-### Known models
+### Listing models
 
-Routing is purely prefix-based, so new models in these families Just Work without
-a code change. The set below mirrors what `bebri-chat` exercises today:
+Routing is purely prefix-based and the adapters forward the model name verbatim
+to each provider's API, so there is **no model allowlist** — any id the provider
+serves Just Works without a code change. The corollary: don't trust a
+hand-maintained catalog (it drifts; a model the README calls "retired" may be
+live, and vice-versa). Ask the API instead:
 
-| Provider | Models |
+```sh
+gllm --models              # every provider with a key: one `provider<TAB>id` per line
+gllm --models gemini       # just one provider
+gllm --models | rg flash   # plain lines — pipe to rg/fzf
+```
+
+`--models` probes each provider's live `models.list()` endpoint and prints the
+**text-generation** models it serves right now (embeddings/audio/image/video are
+filtered out). Azure Foundry is excluded — it's deployment-scoped, not a global
+catalog. A provider with no key (or a failing call) is reported on stderr and
+skipped, never silently dropped.
+
+The families below are illustrative orientation, **not** an authoritative list —
+`gllm --models` is the source of truth:
+
+| Provider | Models (examples) |
 |---|---|
 | Anthropic | `claude-opus-4-5/6/7/8`, `claude-sonnet-4-5/6`, `claude-haiku-4-5/6` |
-| OpenAI | `gpt-5{,-mini,-nano,-pro}`, `gpt-5.1{,-codex,-chat-latest}`, `gpt-5.2{,-pro,-chat-latest}`, `gpt-5-codex`, `codex-mini-latest`, `gpt-4.1{,-mini,-nano}`, `gpt-4o{,-mini}`, `o1{,-pro,-mini}`, `o3{,-pro,-mini,-deep-research}`, `o4-mini{,-deep-research}` |
-| Gemini | `gemini-3.1-pro-preview`, `gemini-3.5-flash` |
+| OpenAI | `gpt-5{,-mini,-nano,-pro}`, `gpt-5.1`–`gpt-5.5`, `gpt-5-codex`, `gpt-4.1{,-mini,-nano}`, `gpt-4o{,-mini}`, `o1/o3/o4-mini` |
+| Gemini | `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-3.1-pro-preview` |
 | DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
-| xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309`, `grok-build-0.1` |
+| xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309` |
 | Azure OpenAI (`-dev`) | `gpt-5{,-mini}-dev`, `gpt-5.1-dev`, `gpt-5.2-dev`, `gpt-5.4{,-pro}-dev`, `gpt-5.5-dev`, `o3-dev` |
 | Azure Anthropic (`-dev`) | `claude-opus-4-5/6/7/8-dev` |
 

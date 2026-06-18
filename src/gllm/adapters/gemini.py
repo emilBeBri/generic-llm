@@ -20,6 +20,7 @@ from google.genai import types
 from ..domain import Request, Response
 from ..ports import LLMProvider
 from ..reasoning import gemini_thinking_budget
+from ._capabilities import is_text_generation_model
 
 
 class GeminiProvider(LLMProvider):
@@ -32,6 +33,21 @@ class GeminiProvider(LLMProvider):
         if not key:
             raise RuntimeError("GEMINI_API_KEY (or GOOGLE_API_KEY) is not set")
         self.client = genai.Client(api_key=key)
+
+    def list_models(self) -> list[str]:
+        # Two-stage filter. First the API's own signal: keep only models whose
+        # `supported_actions` includes `generateContent` (drops embeddings,
+        # which expose `embedContent`). But TTS/image/music models advertise
+        # `generateContent` too, so also apply the name-based text-gen filter.
+        # Names arrive as `models/gemini-3-flash-preview` — strip the prefix.
+        out: list[str] = []
+        for m in self.client.models.list():
+            if "generateContent" not in (m.supported_actions or []):
+                continue
+            mid = m.name.split("/", 1)[-1]
+            if is_text_generation_model(mid):
+                out.append(mid)
+        return sorted(out)
 
     def generate(self, request: Request) -> Response:
         reasoning_on = request.reasoning is not None

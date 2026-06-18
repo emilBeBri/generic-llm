@@ -1,4 +1,5 @@
 from gllm.adapters._capabilities import (
+    is_text_generation_model,
     supports_image,
     supports_pdf,
     use_responses_api,
@@ -40,6 +41,49 @@ def test_pdf_capability_matrix():
     # Grok / DeepSeek: never.
     assert not supports_pdf("grok", "grok-4.3")
     assert not supports_pdf("deepseek", "deepseek-v4-flash")
+
+
+def test_text_generation_filter_keeps_chat_models():
+    # The `--models` filter must keep real text-generation chat models across
+    # every provider family.
+    for m in [
+        "gemini-3-flash-preview",
+        "gemini-3-pro-preview",
+        "gemini-3.5-flash",
+        "gpt-5.5",
+        "o3-mini",
+        "claude-opus-4-8",
+        "deepseek-v4-flash",
+        "grok-4.3",
+        "gemma-4-31b-it",
+        "gpt-4o-search-preview",  # web-search text model, must NOT be hidden
+    ]:
+        assert is_text_generation_model(m), m
+
+
+def test_text_generation_filter_drops_media_and_embeddings():
+    # Embeddings, speech, image, video, music, robotics, computer-use — all
+    # advertise generateContent or appear in the raw catalog but are not usable
+    # text-generation models through gllm.
+    for m in [
+        "text-embedding-3-large",
+        "gemini-embedding-001",
+        "whisper-1",
+        "tts-1-hd",
+        "gemini-2.5-flash-preview-tts",
+        "dall-e-3",
+        "gemini-2.5-flash-image",
+        "gpt-4o-audio-preview",
+        "gpt-4o-realtime-preview",
+        "omni-moderation-latest",
+        "sora-2",
+        "grok-imagine-video",
+        "lyria-3-pro-preview",
+        "nano-banana-pro-preview",
+        "gemini-robotics-er-1.6-preview",
+        "gemini-2.5-computer-use-preview-10-2025",
+    ]:
+        assert not is_text_generation_model(m), m
 
 
 def test_strict_schema_matrix():

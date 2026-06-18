@@ -174,6 +174,47 @@ def _build_provider(name: str) -> LLMProvider:
     raise ValueError(f"unknown provider: {name}")
 
 
+# Providers whose live API exposes a model catalog we can probe. Azure Foundry
+# is excluded: it's deployment-scoped (you list *your* deployments, not a global
+# catalog), so it has no equivalent `models.list()`.
+_LISTABLE_PROVIDERS = ("anthropic", "openai", "gemini", "grok", "deepseek")
+
+
+def _run_models(which: str) -> int:
+    """`gllm --models`: print live `provider<TAB>model-id` rows, one per line.
+
+    Probes each provider's API for the models it ACTUALLY serves right now —
+    the single source of truth — instead of a hand-maintained catalog that
+    drifts out of sync (the failure that made an agent declare a live model
+    "retired"). `which == "*"` probes every listable provider; otherwise just
+    the named one. A provider with no key or a failing call gets a loud stderr
+    line and is skipped — never a silent drop.
+    """
+    if which and which != "*":
+        if which not in _LISTABLE_PROVIDERS:
+            print(
+                f"gllm: --models: unknown provider {which!r}; choose from "
+                f"{', '.join(_LISTABLE_PROVIDERS)}.",
+                file=sys.stderr,
+            )
+            return 2
+        targets: tuple[str, ...] = (which,)
+    else:
+        targets = _LISTABLE_PROVIDERS
+
+    any_ok = False
+    for name in targets:
+        try:
+            models = _build_provider(name).list_models()
+        except Exception as e:
+            print(f"gllm: {name}: skipped ({type(e).__name__}: {e})", file=sys.stderr)
+            continue
+        for mid in models:
+            print(f"{name}\t{mid}")
+        any_ok = True
+    return 0 if any_ok else 1
+
+
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="gllm",
@@ -190,6 +231,18 @@ def _parser() -> argparse.ArgumentParser:
         "--model",
         default=None,
         help=f"Model name. Default: $GLLM_MODEL or {DEFAULT_MODEL}.",
+    )
+    p.add_argument(
+        "--models",
+        nargs="?",
+        const="*",
+        default=None,
+        metavar="PROVIDER",
+        help=(
+            "List the text-generation models each provider's API serves live "
+            "(one `provider<TAB>id` per line; pipe to rg/fzf). Optionally "
+            "restrict to one: --models gemini. Ignores the prompt."
+        ),
     )
     p.add_argument(
         "-s",
@@ -265,6 +318,11 @@ def main(argv: list[str] | None = None) -> int:
     _load_user_env_file(CONFIG_ENV_PATH)
 
     args = _parser().parse_args(argv)
+
+    # `--models` is a discovery mode: probe live catalogs and exit before any
+    # prompt/attachment handling (it needs neither).
+    if args.models is not None:
+        return _run_models(args.models)
 
     # Resolve -m manually so we can tell whether the user typed it.
     if args.model is None:

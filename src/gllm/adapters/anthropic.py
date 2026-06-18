@@ -62,6 +62,12 @@ class AnthropicProvider(LLMProvider):
             raise RuntimeError("ANTHROPIC_API_KEY is not set")
         self.client = anthropic.Anthropic(api_key=key, max_retries=3)
 
+    def list_models(self) -> list[str]:
+        # Every model on the Anthropic API is a text-generation model (no
+        # embeddings/audio surface), so no capability filter is needed. The SDK
+        # page auto-paginates when iterated.
+        return sorted(m.id for m in self.client.models.list())
+
     def generate(self, request: Request) -> Response:
         content = _anthropic_content(request.prompt, request.attachments)
         reasoning_on = request.reasoning is not None
