@@ -7,7 +7,9 @@ at `base_url=https://api.z.ai/api/paas/v4/` (trailing slash matters for the SDK
 URL join). Env key `ZAI_API_KEY`. Model ids are bare `glm-*`; the substring
 router maps `'glm' in model -> 'zai'` (collides with nothing). Mirrors
 bebri-chat's `ZaiAdapter` (commit 572995f), adapted to gllm's one-shot,
-synchronous, no-tools shape. See [[CONVENTIONS-multi-provider-routing]].
+synchronous, no-tools shape — the first worked example of
+[[CONVENTIONS-porting-adapters-from-reference]]. See also
+[[CONVENTIONS-multi-provider-routing]].
 
 ## Standalone, NOT an OpenAIProvider subclass
 
