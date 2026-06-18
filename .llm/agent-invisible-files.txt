@@ -1,0 +1,17 @@
+# Agent invisible files
+#
+# One path per line, relative to the project root.
+# Blank lines and lines starting with # are ignored.
+#
+# Paths listed here are completely hidden from the LLM agent:
+# - read_file cannot read them
+# - write_file / replace_in_file / regex_replace_in_file cannot modify them
+# - fd / ripgrep / list_directory do not reveal them
+#
+# Use this for secrets, private notes, large generated data, or anything the
+# agent should behave as if it cannot see at all.
+#
+# Examples:
+# secrets/
+# private-notes.md
+# data/raw-client-export.csv

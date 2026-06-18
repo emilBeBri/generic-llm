@@ -1,0 +1,17 @@
+# Agent read-only files
+#
+# One path per line, relative to the project root.
+# Blank lines and lines starting with # are ignored.
+#
+# Paths listed here remain visible to the LLM agent:
+# - read_file can read them
+# - fd / ripgrep / list_directory can reveal them
+# - write_file / replace_in_file / regex_replace_in_file cannot modify them
+#
+# Use this for important project files that are useful as context but should
+# not be edited by the agent without you changing this list first.
+#
+# Examples:
+# pyproject.toml
+# README.md
+# src/bebri_chat/adapters/llm_tools/filesystem_tools.py
