@@ -248,7 +248,7 @@ def _parser() -> argparse.ArgumentParser:
         "-m",
         "--model",
         default=None,
-        help=f"Model name. Default: $GLLM_MODEL or {DEFAULT_MODEL}.",
+        help=f"Model name. Default: $DEFAULT_MODEL or {DEFAULT_MODEL}.",
     )
     p.add_argument(
         "--models",
@@ -344,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Resolve -m manually so we can tell whether the user typed it.
     if args.model is None:
-        args.model = os.environ.get("GLLM_MODEL", DEFAULT_MODEL)
+        args.model = os.environ.get("DEFAULT_MODEL", DEFAULT_MODEL)
         print(args.model, file=sys.stderr)
 
     # WORK mode redirects direct Anthropic/OpenAI models to their Azure Foundry

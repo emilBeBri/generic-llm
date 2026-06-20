@@ -337,7 +337,7 @@ and Gemini without per-provider variants. Reflect this in your own schemas.
 
 | Setting | Default |
 |---|---|
-| Model | `$GLLM_MODEL`, else `deepseek-v4-flash` |
+| Model | `$DEFAULT_MODEL`, else `deepseek-v4-flash` |
 | Max tokens | 4096 |
 | Temperature | provider default |
 
