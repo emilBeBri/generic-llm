@@ -117,10 +117,11 @@ gllm -m claude-opus-4-8-dev "..."      # -> azure_anthropic (explicit -dev, any 
 ## Reasoning effort
 
 `-r/--reasoning low|medium|high|xhigh` is one abstract knob that each provider
-translates to its native control. Omitting it is **hands-off** — no reasoning
-param is sent, so the provider's own default applies (no behaviour change).
-Passing it on a model with **no** reasoning control (gpt-4o, deepseek-v4) fails
-loudly with exit 2 rather than silently ignoring you.
+translates to its native control. If omitted, `$DEFAULT_EFFORT` is used when
+set. If neither is set, reasoning is **hands-off** — no reasoning param is sent,
+so the provider's own default applies (no behaviour change). Passing it on a
+model with **no** reasoning control (gpt-4o, deepseek-v4) fails loudly with exit
+2 rather than silently ignoring you.
 
 ```sh
 gllm -r high  -m gpt-5.1 "tricky logic puzzle"
@@ -338,6 +339,7 @@ and Gemini without per-provider variants. Reflect this in your own schemas.
 | Setting | Default |
 |---|---|
 | Model | `$DEFAULT_MODEL`, else `deepseek-v4-flash` |
+| Reasoning | `$DEFAULT_EFFORT`, else provider default |
 | Max tokens | 4096 |
 | Temperature | provider default |
 

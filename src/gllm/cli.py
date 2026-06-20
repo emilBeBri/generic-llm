@@ -293,8 +293,8 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Reasoning effort: low/medium/high/xhigh. Translated to each "
-            "provider's native control. Omitted = provider default. Fails if "
-            "the model has no reasoning control."
+            "provider's native control. Default: $DEFAULT_EFFORT or "
+            "provider default. Fails if the model has no reasoning control."
         ),
     )
     p.add_argument(
@@ -343,13 +343,31 @@ def main(argv: list[str] | None = None) -> int:
         return _run_models(args.models)
 
     # Resolve -m manually so we can tell whether the user typed it.
-    if args.model is None:
+    model_was_defaulted = args.model is None
+    if model_was_defaulted:
         args.model = os.environ.get("DEFAULT_MODEL", DEFAULT_MODEL)
-        print(args.model, file=sys.stderr)
+
+    if args.reasoning is None:
+        env_reasoning = os.environ.get("DEFAULT_EFFORT")
+        if env_reasoning:
+            if env_reasoning not in reasoning_mod.LEVELS:
+                expected = ", ".join(reasoning_mod.LEVELS)
+                print(
+                    f"gllm: DEFAULT_EFFORT must be one of {expected}; "
+                    f"got {env_reasoning!r}.",
+                    file=sys.stderr,
+                )
+                return 2
+            args.reasoning = env_reasoning
 
     # WORK mode redirects direct Anthropic/OpenAI models to their Azure Foundry
     # `-dev` deployment. Everything downstream sees the effective name.
     args.model = effective_model(args.model, work_env())
+    if model_was_defaulted:
+        print(
+            f"{args.model}:{args.reasoning}" if args.reasoning else args.model,
+            file=sys.stderr,
+        )
 
     files: list[str] = args.files or []
     stdin_is_file = "-" in files
