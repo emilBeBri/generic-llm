@@ -1,6 +1,5 @@
 # various not sorted #section
 
-
 .llm-memory/raw/source-docs
 
 # bebri-chat session state (collateral from running the parent agent in this dir)
