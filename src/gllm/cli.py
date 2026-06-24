@@ -295,8 +295,9 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Reasoning effort: low/medium/high/xhigh. Translated to each "
-            "provider's native control. Default: $DEFAULT_EFFORT or "
-            "provider default. Fails if the model has no reasoning control."
+            "provider's native control. Default: $DEFAULT_EFFORT or provider "
+            "default. An explicit value fails on models with no reasoning "
+            "control; a $DEFAULT_EFFORT default is silently dropped on them."
         ),
     )
     p.add_argument(
@@ -349,6 +350,10 @@ def main(argv: list[str] | None = None) -> int:
     if model_was_defaulted:
         args.model = os.environ.get("DEFAULT_MODEL", DEFAULT_MODEL)
 
+    # Track provenance: an explicit -r/--reasoning is a hard contract, but a
+    # value inherited from $DEFAULT_EFFORT is just an ambient default that may be
+    # silently dropped on models that can't reason (see the capability gate below).
+    reasoning_was_defaulted = False
     if args.reasoning is None:
         env_reasoning = os.environ.get("DEFAULT_EFFORT")
         if env_reasoning:
@@ -361,10 +366,29 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 2
             args.reasoning = env_reasoning
+            reasoning_was_defaulted = True
 
     # WORK mode redirects direct Anthropic/OpenAI models to their Azure Foundry
     # `-dev` deployment. Everything downstream sees the effective name.
     args.model = effective_model(args.model, work_env())
+    provider_name = provider_for(args.model)
+
+    # Reasoning capability gate. An explicit --reasoning a model can't honour is
+    # a hard error (fail loud). But an ambient $DEFAULT_EFFORT must not block
+    # non-reasoning models like gpt-4.1 — drop it silently and carry on. Done
+    # before the status print so the printed model:reasoning line is truthful.
+    if args.reasoning and not supports_reasoning(provider_name, args.model):
+        if reasoning_was_defaulted:
+            args.reasoning = None
+        else:
+            print(
+                f"gllm: {provider_name} model {args.model!r} has no reasoning "
+                f"control; drop --reasoning or use a reasoning-capable model "
+                f"(gpt-5/o-series, claude-*, gemini-*, grok-*).",
+                file=sys.stderr,
+            )
+            return 2
+
     if model_was_defaulted:
         print(
             f"{args.model}:{args.reasoning}" if args.reasoning else args.model,
@@ -422,18 +446,6 @@ def main(argv: list[str] | None = None) -> int:
         attachments=attachments,
         reasoning=args.reasoning,
     )
-
-    provider_name = provider_for(args.model)
-
-    # Native-or-fail: refuse a reasoning level the model can't honour.
-    if args.reasoning and not supports_reasoning(provider_name, args.model):
-        print(
-            f"gllm: {provider_name} model {args.model!r} has no reasoning "
-            f"control; drop --reasoning or use a reasoning-capable model "
-            f"(gpt-5/o-series, claude-*, gemini-*, grok-*).",
-            file=sys.stderr,
-        )
-        return 2
 
     # Strict-or-fail: --schema promises enforced structured output. Refuse it on
     # providers that can only fake it via prompt instructions (no guarantee) —
