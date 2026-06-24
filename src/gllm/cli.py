@@ -34,9 +34,11 @@ from .ports import LLMProvider
 from .routing import effective_model, provider_for
 
 DEFAULT_MODEL = "deepseek-v4-flash"
-# Temporary: keys live in the bebri-chat .env until we wire up a real
-# secret-loading strategy. See .llm-memory/IDEAS-key-loading-secret-managers.md.
-CONFIG_ENV_PATH = Path("/home/emil/prog/prj/bebri-chat/.env")
+# Config and keys load from this repo's own .env (repo root, beside
+# pyproject.toml), resolved relative to this file so it is found regardless of
+# cwd. cli.py lives at <root>/src/gllm/cli.py, so parents[2] is the repo root.
+# See .llm-memory/IDEAS-key-loading-secret-managers.md for the longer-term plan.
+CONFIG_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 
 def _load_user_env_file(path: Path) -> None:

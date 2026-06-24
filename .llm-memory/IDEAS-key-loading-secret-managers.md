@@ -2,17 +2,17 @@
 
 Not built yet. Drop here for when it matters.
 
-## Current behavior (v1, TEMPORARY)
+## Current behavior (v1)
 
-`gllm` resolves provider API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) in this order:
-1. Process environment
-2. **Hardcoded path: `/home/emil/prog/prj/bebri-chat/.env`** (see `cli.py:CONFIG_ENV_PATH`)
+`gllm` resolves provider API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) — and the `DEFAULT_MODEL` / `DEFAULT_EFFORT` / `WORK_ENV` toggles — in this order:
+1. Process environment (an exported var always wins; `_load_user_env_file` never overrides an existing key)
+2. **This repo's own `.env`**, resolved relative to the source as `Path(__file__).resolve().parents[2] / ".env"` (see `cli.py:CONFIG_ENV_PATH`). cli.py lives at `<root>/src/gllm/cli.py`, so `parents[2]` is the repo root next to `pyproject.toml`.
 
-**This hardcode is deliberate stop-gap, not the design.** Done so `gllm` immediately reuses the keys already in the bebri-chat checkout, without having to copy them into a second location. Replace it when:
-- `~/.config/gllm/.env` is set up (the originally-designed location), or
-- A real secret-manager integration lands (see below).
+Earlier (≤ Jun 2026) this was a hardcoded cross-repo path to `/home/emil/prog/prj/bebri-chat/.env`, which meant edits to *this* repo's `.env` were silently ignored — a confusing footgun (e.g. `DEFAULT_MODEL` would not change). Replaced with the repo-local resolution above so the `.env` you edit is the `.env` gllm reads. Originally-designed end state is still a per-user `~/.config/gllm/.env`, or a real secret-manager integration (below).
 
-If the hardcoded path doesn't exist, `_load_user_env_file` silently no-ops — `gllm` then falls through to whatever's in the process env. So the hack is harmless on machines where the path is missing, but it should still be removed before this code ships anywhere outside emil's laptop.
+**Caveat — editable vs copied installs.** This resolution assumes the editable/source layout (`<root>/src/gllm/cli.py`). A `uv tool install` copies the package to a tool venv as `site-packages/gllm/cli.py` (no `src/`, no sibling `.env`), so `parents[2]/.env` won't exist there and `_load_user_env_file` falls through to the process env. The repo `.venv` editable install is the supported path; a stale global `~/.local/bin/gllm` may still carry the old hardcode until reinstalled.
+
+If the resolved path doesn't exist, `_load_user_env_file` warns on stderr and falls through to whatever's in the process env.
 
 Rationale for the *originally designed* approach: no `.zshrc` exports needed, so keys aren't broadcast to every child process the user ever spawns. Loading is gllm-local — only the gllm process and its children see the resolved keys.
 
