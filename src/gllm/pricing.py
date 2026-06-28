@@ -188,11 +188,79 @@ def compute_cost(provider: str, entry: dict | None, usage: dict) -> float | None
     return round(input_cost + output_cost, 6)
 
 
-def price_report(provider: str, models: list[str], usage: dict) -> dict:
-    """Convenience for the CLI: load prices, match the first model name that
-    hits, compute cost. Never raises — pricing must not break the main output.
-    Returns {cost_usd, priced_as, price_source}."""
+# --------------------------------------------------------------------------- #
+# Local overrides: two-tier (bundled data/ + ~/.config/gllm/ overlay), matching
+# gllm's schema/instruction layout. Overrides WIN over the feed — they fill gaps
+# the feed lacks (GLM/Zhipu) and double as a manual fix for a mispriced model.
+# --------------------------------------------------------------------------- #
+def _bundled_overrides_path() -> Path:
+    # pricing.py is at <repo>/src/gllm/pricing.py -> parents[2] is the repo root.
+    return Path(__file__).resolve().parents[2] / "data" / "prices.json"
+
+
+def _overlay_overrides_path() -> Path:
+    base = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    root = Path(base) if base else Path.home() / ".config"
+    return root / "gllm" / "prices.json"
+
+
+def _read_override_file(path: Path) -> dict:
     try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_overrides() -> dict:
+    """Merge bundled + user-overlay price overrides into {model_lower: entry}.
+
+    Overlay wins per model. Keys starting with '_' are ignored (comments). An
+    entry is only kept once it has numeric input AND output — an unfilled stub
+    (null values) is skipped, so shipping a stub never fabricates a $0 price.
+    """
+    merged: dict = {}
+    for path in (_bundled_overrides_path(), _overlay_overrides_path()):  # overlay last = wins
+        for k, v in _read_override_file(path).items():
+            if k.startswith("_") or not isinstance(v, dict):
+                continue
+            merged[k.strip().lower()] = v
+    return {
+        k: v for k, v in merged.items()
+        if isinstance(v.get("input"), (int, float)) and isinstance(v.get("output"), (int, float))
+    }
+
+
+def match_override(model: str, overrides: dict) -> tuple[str, dict] | None:
+    """(key, entry) for a model in the overrides, by exact then dot/dash-
+    normalised name. None if absent."""
+    if not model or not overrides:
+        return None
+    ml = model.strip().lower()
+    if ml in overrides:
+        return ml, overrides[ml]
+    nm = _norm(model)
+    for k, v in overrides.items():
+        if _norm(k) == nm:
+            return k, v
+    return None
+
+
+def price_report(provider: str, models: list[str], usage: dict) -> dict:
+    """Convenience for the CLI: try local overrides first, then the feed; match
+    the first model name that hits; compute cost. Never raises — pricing must not
+    break the main output. Returns {cost_usd, priced_as, price_source}."""
+    try:
+        overrides = load_overrides()
+        for m in models:
+            hit = match_override(m, overrides)
+            if hit:
+                key, entry = hit
+                return {
+                    "cost_usd": compute_cost(provider, entry, usage),
+                    "priced_as": key,
+                    "price_source": "override",
+                }
         prices, source, _ = load_prices()
         entry = None
         for m in models:
@@ -200,7 +268,7 @@ def price_report(provider: str, models: list[str], usage: dict) -> dict:
             if entry:
                 break
         return {
-            "cost_usd": compute_cost(provider, entry, usage),
+            "cost_usd": compute_cost(provider, entry, usage) if entry else None,
             "priced_as": entry.get("id") if entry else None,
             "price_source": source,
         }

@@ -89,6 +89,51 @@ def test_price_report_picks_first_matching_candidate(monkeypatch):
     assert out["cost_usd"] == 5.0
 
 
+# --- local overrides --------------------------------------------------------
+
+def _write(path, obj):
+    import json as _j
+    path.write_text(_j.dumps(obj), encoding="utf-8")
+
+
+def test_overrides_overlay_wins_and_stub_skipped(tmp_path, monkeypatch):
+    bundled = tmp_path / "bundled.json"
+    overlay = tmp_path / "overlay.json"
+    _write(bundled, {
+        "_comment": "ignored",
+        "glm-5.2": {"input": None, "output": None},          # stub -> skipped
+        "glm-old": {"input": 1.0, "output": 2.0},            # active
+    })
+    _write(overlay, {
+        "glm-5.2": {"input": 0.6, "output": 2.2, "input_cached": 0.11},  # fills the stub
+        "glm-old": {"input": 9.0, "output": 9.0},            # overlay wins
+    })
+    monkeypatch.setattr(pricing, "_bundled_overrides_path", lambda: bundled)
+    monkeypatch.setattr(pricing, "_overlay_overrides_path", lambda: overlay)
+
+    ov = pricing.load_overrides()
+    assert "_comment" not in ov
+    assert ov["glm-5.2"]["input"] == 0.6          # overlay activated it
+    assert ov["glm-old"]["input"] == 9.0          # overlay overrode bundled
+
+
+def test_override_beats_feed_in_price_report(monkeypatch):
+    monkeypatch.setattr(pricing, "load_overrides",
+                        lambda: {"glm-5.2": {"input": 0.6, "output": 2.2, "input_cached": 0.11}})
+    monkeypatch.setattr(pricing, "load_prices", lambda *a, **k: (PRICES, "cache", None))
+    out = pricing.price_report("zai", ["glm-5.2"],
+                               {"input_tokens": 1_000_000, "output_tokens": 1_000_000})
+    assert out["price_source"] == "override"
+    assert out["priced_as"] == "glm-5.2"
+    assert out["cost_usd"] == round(0.6 + 2.2, 6)
+
+
+def test_bundled_prices_file_is_valid_json():
+    # The shipped stub must always parse; filling it must not break loading.
+    data = pricing._read_override_file(pricing._bundled_overrides_path())
+    assert isinstance(data, dict)
+
+
 # --- CLI emission -----------------------------------------------------------
 
 class _FakeProvider:
@@ -104,6 +149,7 @@ def _wire(monkeypatch):
     monkeypatch.setattr(cli, "_build_provider", lambda _name: _FakeProvider())
     monkeypatch.setattr(cli, "_read_stdin_if_piped", lambda: "hej")
     monkeypatch.setattr(pricing, "load_prices", lambda *a, **k: (PRICES, "cache", None))
+    monkeypatch.setattr(pricing, "load_overrides", lambda: {})  # isolate from real override files
     monkeypatch.delenv("DEFAULT_MODEL", raising=False)
     monkeypatch.delenv("DEFAULT_EFFORT", raising=False)
     monkeypatch.delenv("WORK", raising=False)

@@ -11,6 +11,7 @@ import json
 from types import SimpleNamespace
 
 import gllm.cli as cli
+import gllm.pricing as pricing
 from gllm.domain import Response
 from gllm.usage import (
     from_anthropic,
@@ -125,6 +126,10 @@ def _wire(monkeypatch):
     monkeypatch.setattr(cli, "_load_user_env_file", lambda *_: None)
     monkeypatch.setattr(cli, "_build_provider", lambda _name: _FakeProvider())
     monkeypatch.setattr(cli, "_read_stdin_if_piped", lambda: "hej")
+    # Keep these usage tests off the network / real price files (pricing has its
+    # own suite); the assertions here are about token fields, not cost.
+    monkeypatch.setattr(pricing, "load_prices", lambda *a, **k: ([], "none", None))
+    monkeypatch.setattr(pricing, "load_overrides", lambda: {})
     monkeypatch.delenv("DEFAULT_MODEL", raising=False)
     monkeypatch.delenv("DEFAULT_EFFORT", raising=False)
     monkeypatch.delenv("WORK", raising=False)

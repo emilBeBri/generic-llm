@@ -67,9 +67,21 @@ Three separable pieces (the matching/cost halves are pure + unit-tested offline)
   `reasoning_tokens`); OpenAI-family/DeepSeek/GLM fold cache into prompt and
   reasoning into output (subtract cache_read, don't add reasoning).
 
-KNOWN GAP: **GLM/Zhipu is not in the llm-prices feed**, so `glm-5.2` → `cost_usd:
-null, priced_as: null`. Honest, not a bug. A local override file (à la
-bebri-chat's `data/llm-prices.json`) could fill it — not built yet.
+## Local overrides fill feed gaps (GLM) and fix mispricings
+
+**GLM/Zhipu is absent from the llm-prices feed** (so the feed alone gives
+`glm-5.2` → null cost). Closed with a two-tier override (mirrors the
+schema/instruction layout, [[CONVENTIONS-schemas-and-instructions]]):
+- bundled `<repo>/data/prices.json` (version-controlled, syncs across machines)
+- user overlay `~/.config/gllm/prices.json` (per-machine, **wins** per model)
+
+`load_overrides()` merges them ({model_lower: {input, output, input_cached}},
+USD/1M); `_`-prefixed keys are comments; an entry activates only with numeric
+input AND output, so the shipped `glm-5.2` stub (null values) never fabricates a
+$0 — fill it to activate. `price_report()` consults **overrides BEFORE the feed**,
+so they also override a feed mispricing; matched override → `price_source:
+"override"`. The bundled file ships glm-5.2/glm-5v-turbo stubs awaiting real
+z.ai rates.
 
 Related: [[ADR-reasoning-effort-ladder]] (the `reasoning` level echoed in the
 record), [[CONVENTIONS-zai-glm-adapter]] (GLM uses the chat mapper, and has no
