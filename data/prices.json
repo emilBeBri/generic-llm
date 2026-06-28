@@ -1,6 +1,7 @@
 {
   "_comment": "Local LLM price overrides, USD per 1M tokens. Merged OVER the llm-prices.com feed (these WIN), for models the feed lacks (e.g. GLM/Zhipu) or mis-prices. Per-machine overrides go in ~/.config/gllm/prices.json (the overlay wins over this bundled file). An entry activates only once input AND output are numeric — null/omitted is a skipped stub, never a $0 price. input_cached is optional: the per-1M cached-read rate; null falls back to the input rate.",
   "_example": { "input": 0.6, "output": 2.2, "input_cached": 0.11 },
-  "glm-5.2": { "input": null, "output": null, "input_cached": null },
-  "glm-5v-turbo": { "input": null, "output": null, "input_cached": null }
+  "_source": "z.ai official pricing (docs.z.ai/guides/overview/pricing), verified 2026-06-28",
+  "glm-5.2": { "input": 1.4, "output": 4.4, "input_cached": 0.26 },
+  "glm-5v-turbo": { "input": 1.2, "output": 4.0, "input_cached": 0.24 }
 }
