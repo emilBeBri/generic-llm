@@ -29,6 +29,7 @@ import os
 from ..domain import Request, Response
 from ..ports import LLMProvider
 from ..reasoning import anthropic_thinking
+from ..usage import from_anthropic
 from .anthropic import _anthropic_content
 
 
@@ -119,7 +120,6 @@ class AzureAnthropicProvider(LLMProvider):
             text=text,
             model=msg.model,
             provider=self.name,
-            input_tokens=msg.usage.input_tokens,
-            output_tokens=msg.usage.output_tokens,
             raw=msg,
+            **from_anthropic(msg.usage),
         )

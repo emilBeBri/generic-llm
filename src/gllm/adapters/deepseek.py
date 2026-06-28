@@ -23,6 +23,7 @@ from openai import OpenAI
 
 from ..domain import Request, Response
 from ..ports import LLMProvider
+from ..usage import from_deepseek
 from ._capabilities import is_text_generation_model
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
@@ -80,15 +81,10 @@ class DeepSeekProvider(LLMProvider):
 
         text = resp.choices[0].message.content or ""
 
-        usage = getattr(resp, "usage", None)
-        in_tok = getattr(usage, "prompt_tokens", 0) if usage else 0
-        out_tok = getattr(usage, "completion_tokens", 0) if usage else 0
-
         return Response(
             text=text,
             model=resp.model,
             provider=self.name,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
             raw=resp,
+            **from_deepseek(getattr(resp, "usage", None)),
         )

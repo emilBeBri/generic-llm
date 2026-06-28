@@ -27,6 +27,7 @@ from openai import OpenAI
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..reasoning import zai_effort
+from ..usage import from_openai_chat
 from ._capabilities import (
     glm_supports_reasoning_effort,
     glm_supports_thinking,
@@ -110,17 +111,12 @@ class ZaiProvider(LLMProvider):
 
         text = resp.choices[0].message.content or ""
 
-        usage = getattr(resp, "usage", None)
-        in_tok = getattr(usage, "prompt_tokens", 0) if usage else 0
-        out_tok = getattr(usage, "completion_tokens", 0) if usage else 0
-
         return Response(
             text=text,
             model=resp.model,
             provider=self.name,
-            input_tokens=in_tok or 0,
-            output_tokens=out_tok or 0,
             raw=resp,
+            **from_openai_chat(getattr(resp, "usage", None)),
         )
 
     def _user_content(self, request: Request, vision: bool):

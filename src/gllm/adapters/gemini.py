@@ -20,6 +20,7 @@ from google.genai import types
 from ..domain import Request, Response
 from ..ports import LLMProvider
 from ..reasoning import gemini_thinking_budget
+from ..usage import from_gemini
 from ._capabilities import is_text_generation_model
 
 
@@ -94,15 +95,10 @@ class GeminiProvider(LLMProvider):
 
         text = resp.text or ""
 
-        usage = getattr(resp, "usage_metadata", None)
-        in_tok = getattr(usage, "prompt_token_count", 0) if usage else 0
-        out_tok = getattr(usage, "candidates_token_count", 0) if usage else 0
-
         return Response(
             text=text,
             model=request.model,
             provider=self.name,
-            input_tokens=in_tok or 0,
-            output_tokens=out_tok or 0,
             raw=resp,
+            **from_gemini(getattr(resp, "usage_metadata", None)),
         )

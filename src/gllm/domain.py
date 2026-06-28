@@ -54,4 +54,13 @@ class Response:
     provider: str
     input_tokens: int = 0
     output_tokens: int = 0
+    # Richer usage, populated per-provider by gllm.usage (0 / {} where the
+    # provider doesn't report it). cache_write is Anthropic's pricier cache-
+    # creation; reasoning_tokens is only what a provider breaks out separately.
+    # `usage_raw` is the provider's own usage dict, verbatim — the ground truth
+    # for exact cost accounting (the normalised fields are a rough common view).
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
+    usage_raw: dict = field(default_factory=dict)
     raw: Any = field(default=None, repr=False)

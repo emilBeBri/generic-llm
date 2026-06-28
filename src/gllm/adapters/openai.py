@@ -24,6 +24,7 @@ from openai import OpenAI
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..reasoning import openai_effort
+from ..usage import from_openai_chat, from_openai_responses
 from ._capabilities import is_text_generation_model, use_responses_api
 
 
@@ -159,17 +160,12 @@ class OpenAIProvider(LLMProvider):
         # SDK exposes a flattened `output_text` aggregating all text deltas.
         text = getattr(resp, "output_text", "") or ""
 
-        usage = getattr(resp, "usage", None)
-        in_tok = getattr(usage, "input_tokens", 0) if usage else 0
-        out_tok = getattr(usage, "output_tokens", 0) if usage else 0
-
         return Response(
             text=text,
             model=request.model,
             provider=self.name,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
             raw=resp,
+            **from_openai_responses(getattr(resp, "usage", None)),
         )
 
     def _generate_chat(self, request: Request) -> Response:
@@ -205,15 +201,10 @@ class OpenAIProvider(LLMProvider):
 
         text = resp.choices[0].message.content or ""
 
-        usage = getattr(resp, "usage", None)
-        in_tok = getattr(usage, "prompt_tokens", 0) if usage else 0
-        out_tok = getattr(usage, "completion_tokens", 0) if usage else 0
-
         return Response(
             text=text,
             model=resp.model,
             provider=self.name,
-            input_tokens=in_tok,
-            output_tokens=out_tok,
             raw=resp,
+            **from_openai_chat(getattr(resp, "usage", None)),
         )

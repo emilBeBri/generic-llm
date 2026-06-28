@@ -19,6 +19,7 @@ import anthropic
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..reasoning import anthropic_thinking
+from ..usage import from_anthropic
 
 
 def _anthropic_content(prompt: str, attachments: tuple[Attachment, ...]) -> list[dict] | str:
@@ -121,7 +122,6 @@ class AnthropicProvider(LLMProvider):
             text=text,
             model=msg.model,
             provider=self.name,
-            input_tokens=msg.usage.input_tokens,
-            output_tokens=msg.usage.output_tokens,
             raw=msg,
+            **from_anthropic(msg.usage),
         )

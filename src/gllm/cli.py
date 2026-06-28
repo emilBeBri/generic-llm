@@ -332,6 +332,16 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Log provider/model/token usage to stderr.",
     )
+    p.add_argument(
+        "--usage",
+        action="store_true",
+        help=(
+            "Emit one machine-readable JSON usage record to stderr, prefixed "
+            "'gllm-usage ' — provider, model, reasoning, input/output/cache/"
+            "reasoning tokens, plus the provider's verbatim usage in usage_raw. "
+            "stdout stays the model text only."
+        ),
+    )
     return p
 
 
@@ -500,6 +510,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose:
         print(
             f"gllm: tokens in={response.input_tokens} out={response.output_tokens}",
+            file=sys.stderr,
+        )
+
+    if args.usage:
+        # Machine-readable sibling of --verbose. One JSON object on its own line,
+        # prefixed so a caller can grep it out of mixed stderr. usage_raw carries
+        # the provider's own numbers for exact per-model cost accounting.
+        record = {
+            "provider": response.provider,
+            "model": response.model,
+            "reasoning": request.reasoning,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "cache_read_tokens": response.cache_read_tokens,
+            "cache_write_tokens": response.cache_write_tokens,
+            "reasoning_tokens": response.reasoning_tokens,
+            "max_tokens": request.max_tokens,
+            "schema": schema is not None,
+            "json": request.json_mode,
+            "usage_raw": response.usage_raw,
+        }
+        print(
+            "gllm-usage " + json.dumps(record, separators=(",", ":")),
             file=sys.stderr,
         )
 
