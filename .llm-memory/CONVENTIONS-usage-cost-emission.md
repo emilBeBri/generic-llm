@@ -44,11 +44,33 @@ The normalised fields are a lowest-common-denominator view whose semantics do
 NOT fully agree across providers (the Gemini reasoning caveat above). For exact
 per-model billing, use **`usage_raw`** — the provider's own numbers, untouched.
 
-## Dollar cost is deliberately NOT here
+## Dollar cost IS baked in (`gllm/pricing.py`)
 
-gllm emits the token/cache/reasoning *ingredients* and stops. Per-model prices
-drift and are the consumer's policy, so $-conversion lives downstream (e.g.
-book-agent's price table + SQLite cost log), not in gllm.
+(Earlier this said cost belongs downstream — reversed on request 2026-06-28:
+gllm owns the token counts, so it owns the $-conversion too.)
+
+`--usage` adds `cost_usd`, `priced_as` (the feed entry matched), and
+`price_source` to the record. Source is the **llm-prices.com** feed
+(`https://www.llm-prices.com/current-v1.json`, Simon Willison's project — the
+same one bebri-chat uses), fetched with stdlib urllib (no new dep) and cached to
+`~/.cache/gllm/llm-prices-v1.json` for 24h with stale fallback. Prices are USD
+per 1M tokens; `input_cached` may be null.
+
+Three separable pieces (the matching/cost halves are pure + unit-tested offline):
+- `load_prices()` — fetch + 24h cache + stale fallback.
+- `match_price(model, prices)` — exact id → dot/dash-normalised (`gemini-3.1-...`
+  ↔ feed `gemini-3-1-...`) → unique token-set (`claude-haiku-4-5` ↔ feed
+  `claude-4.5-haiku`). Ambiguous token-set → no match (null, never a wrong price).
+- `compute_cost(provider, entry, usage)` — **provider-aware**, because the token
+  conventions differ: Anthropic `input_tokens` EXCLUDES cache (so don't subtract;
+  writes ≈1.25× input); Gemini bills thoughts ON TOP of output (add
+  `reasoning_tokens`); OpenAI-family/DeepSeek/GLM fold cache into prompt and
+  reasoning into output (subtract cache_read, don't add reasoning).
+
+KNOWN GAP: **GLM/Zhipu is not in the llm-prices feed**, so `glm-5.2` → `cost_usd:
+null, priced_as: null`. Honest, not a bug. A local override file (à la
+bebri-chat's `data/llm-prices.json`) could fill it — not built yet.
 
 Related: [[ADR-reasoning-effort-ladder]] (the `reasoning` level echoed in the
-record), [[CONVENTIONS-zai-glm-adapter]] (GLM uses the chat mapper).
+record), [[CONVENTIONS-zai-glm-adapter]] (GLM uses the chat mapper, and has no
+feed price).

@@ -21,6 +21,7 @@ import os
 import sys
 from pathlib import Path
 
+from . import pricing
 from . import reasoning as reasoning_mod
 from .adapters._capabilities import (
     supports_image,
@@ -338,7 +339,8 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Emit one machine-readable JSON usage record to stderr, prefixed "
             "'gllm-usage ' — provider, model, reasoning, input/output/cache/"
-            "reasoning tokens, plus the provider's verbatim usage in usage_raw. "
+            "reasoning tokens, derived cost_usd (from the llm-prices.com feed, "
+            "24h-cached), plus the provider's verbatim usage in usage_raw. "
             "stdout stays the model text only."
         ),
     )
@@ -516,16 +518,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.usage:
         # Machine-readable sibling of --verbose. One JSON object on its own line,
         # prefixed so a caller can grep it out of mixed stderr. usage_raw carries
-        # the provider's own numbers for exact per-model cost accounting.
-        record = {
-            "provider": response.provider,
-            "model": response.model,
-            "reasoning": request.reasoning,
+        # the provider's own numbers for exact per-model cost accounting; cost_usd
+        # is derived from the llm-prices.com feed (priced_as names the matched
+        # entry, null when the feed has no price for this model — e.g. GLM).
+        usage = {
             "input_tokens": response.input_tokens,
             "output_tokens": response.output_tokens,
             "cache_read_tokens": response.cache_read_tokens,
             "cache_write_tokens": response.cache_write_tokens,
             "reasoning_tokens": response.reasoning_tokens,
+        }
+        # Match on what answered, falling back to the requested name.
+        candidates = list(dict.fromkeys([response.model, request.model]))
+        record = {
+            "provider": response.provider,
+            "model": response.model,
+            "reasoning": request.reasoning,
+            **usage,
+            **pricing.price_report(response.provider, candidates, usage),
             "max_tokens": request.max_tokens,
             "schema": schema is not None,
             "json": request.json_mode,
