@@ -366,11 +366,19 @@ MODELS: dict[str, ModelSpec] = {
         alt_model="deepseek-v4-pro", family="deepseek-v4",
     ),
     # ----------------------------------------------------------------- #
-    # xAI Grok. grok-4.3 is the flagship; ~30 older grok-* names are
-    # server-side aliases to it and are deliberately omitted.
+    # xAI Grok. grok-4.3 is the general flagship, grok-4.5 the coding one;
+    # ~30 older grok-* names (incl. the retired grok-4-1-fast-* and
+    # grok-4-fast-* slugs) are server-side aliases to grok-4.3 and are
+    # deliberately omitted — they resolve, but they are not distinct models.
     # ----------------------------------------------------------------- #
+    # Coding/agentic flagship. Note the shorter window and the higher price:
+    # over 200k prompt tokens xAI bills the WHOLE request at 2x ($4/$12).
+    # Aliased by grok-build-latest, i.e. it supersedes grok-build-0.1.
+    "grok-4.5": ModelSpec(
+        "grok-4.5", "grok", 500_000, _GROK, alt_model="grok-4.3"
+    ),
     "grok-4.3": ModelSpec(
-        "grok-4.3", "grok", 1_000_000, _GROK, alt_model="grok-build-0.1"
+        "grok-4.3", "grok", 1_000_000, _GROK, alt_model="grok-4.5"
     ),
     "grok-4.20-0309-reasoning": ModelSpec(
         "grok-4.20-0309-reasoning", "grok", 1_000_000, _GROK, alt_model="grok-4.3"
@@ -384,7 +392,7 @@ MODELS: dict[str, ModelSpec] = {
         "grok-4.20-multi-agent-0309", "grok", 2_000_000, _GROK, alt_model="grok-4.3"
     ),
     "grok-build-0.1": ModelSpec(
-        "grok-build-0.1", "grok", 256_000, _GROK, alt_model="grok-4.3"
+        "grok-build-0.1", "grok", 256_000, _GROK, alt_model="grok-4.5"
     ),
     # ----------------------------------------------------------------- #
     # Z.AI / GLM. Bare ids — nothing else in the registry contains "glm".
