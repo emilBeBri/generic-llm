@@ -130,7 +130,7 @@ class OpenAIProvider(LLMProvider):
         # the visible answer isn't starved by a long reasoning pass.
         max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
         kwargs: dict = {
-            "model": request.model,
+            "model": request.wire_model or request.model,
             "input": _responses_input(request.prompt, request.attachments),
             "max_output_tokens": max_out,
             "store": False,
@@ -162,7 +162,7 @@ class OpenAIProvider(LLMProvider):
 
         return Response(
             text=text,
-            model=request.model,
+            model=request.model,  # registry key, not the wire id
             provider=self.name,
             raw=resp,
             **from_openai_responses(getattr(resp, "usage", None)),
@@ -178,7 +178,7 @@ class OpenAIProvider(LLMProvider):
         })
 
         kwargs: dict = {
-            "model": request.model,
+            "model": request.wire_model or request.model,
             "messages": messages,
             "max_tokens": request.max_tokens,
         }

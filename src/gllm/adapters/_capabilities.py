@@ -1,140 +1,123 @@
-"""Which OpenAI API surface does a model use? And which providers handle
-which kinds of attachments natively?
+"""Capability gates: what can this (provider, model) actually be asked to do?
 
-Single source of truth shared by `openai.py`, `grok.py` (via subclass), and
-`azure_openai.py`, so we don't scatter `if "codex" in model or "o1" in model`
-checks across adapters.
+Every gate here is a thin read of `models.caps_for(model, provider)` — one
+`ModelCaps` per model, either from its registry row or guessed by the legacy
+substring heuristics when the name is unregistered. The gates keep their old
+names and signatures so `cli.py` and the adapters read the same as before; what
+changed is that the answers now come from data instead of from `if "codex" in
+model` scattered across adapters.
 
-* Reasoning / agentic models -> Responses API (`/v1/responses`)
-  - o1, o3, o4, gpt-5 (incl. gpt-5.5), codex, and xAI grok-*
-* Classic chat models -> Chat Completions (`/v1/chat/completions`)
-  - gpt-4, gpt-4o, gpt-3.5
-* Unknown slugs default to Responses (OpenAI's "Responses for everything new"
-  direction; it is the strict superset). Azure `-dev` deployments share the
-  same prefixes, so `gpt-5.1-dev` -> Responses, `gpt-4o-dev` -> Chat.
+Philosophy is unchanged: **native or fail**. A capability a model cannot honour
+is a loud refusal, never a silent degradation or a text-extraction fallback.
 
-Attachment capability follows the rule **native or fail** — no text-extraction
-fallback. PDF support on OpenAI is only on the Responses API (Chat Completions
-has no PDF content-block type).
+`is_text_generation_model` is the one function here that is NOT registry-backed,
+by design: it filters `gllm --models` output, which is a live probe of ids the
+registry has by definition never seen.
 """
 
 from __future__ import annotations
 
-# Order matters: Responses is checked first so "gpt-5" is not swallowed by the
-# "gpt-4"/"gpt-3.5" chat check (it wouldn't be, but keep the intent explicit).
-_RESPONSES_API_PREFIXES = ("o1", "o3", "o4", "gpt-5", "codex", "grok")
-_CHAT_COMPLETIONS_PREFIXES = ("gpt-4", "gpt-3.5")
+from ..models import (
+    _legacy_glm_effort,
+    _legacy_glm_thinking,
+    _legacy_is_glm_vision,
+    caps_for,
+    spec_for,
+)
 
 
 def use_responses_api(model: str) -> bool:
-    m = (model or "").strip().lower()
-    if any(m.startswith(p) for p in _RESPONSES_API_PREFIXES):
-        return True
-    # Classic chat models -> Chat; everything else (incl. unknown) -> Responses.
-    return not any(m.startswith(p) for p in _CHAT_COMPLETIONS_PREFIXES)
+    """Responses API (`/v1/responses`) or Chat Completions?
+
+    Reasoning/agentic models (o-series, gpt-5 incl. 5.6, codex, grok) speak
+    Responses; the classic chat line (gpt-4, gpt-4o, gpt-3.5) speaks Chat
+    Completions. Unknown slugs default to Responses — OpenAI's "Responses for
+    everything new" direction, and the strict superset of the two.
+    """
+    # The provider hint only matters for unregistered names, and every model
+    # that reaches this question is OpenAI-family.
+    return caps_for(model, "openai").api_surface != "chat"
 
 
-_IMAGE_PROVIDERS = {
-    "anthropic",
-    "azure_anthropic",
-    "openai",
-    "azure_openai",
-    "gemini",
-    "grok",
-    # GLM has image-capable models, but vision lives in SEPARATE models — the
-    # zai adapter enforces the per-model split (text GLMs reject images).
-    "zai",
-}
+def supports_image(provider: str, model: str = "") -> bool:
+    """Can this model take image input?
+
+    `model` is optional only so older provider-level callers keep working; pass
+    it. It is what makes the GLM vision split declarative — the text GLMs reject
+    images, and that used to be an adapter-internal raise.
+    """
+    return caps_for(model, provider).supports_vision
 
 
-# --- GLM / Z.AI model-family capability splits ---
-# GLM scatters capabilities across model families rather than gating per-call,
-# so these prefix checks are the single source of truth, shared by the zai
-# adapter and the capability gates below.
-#   * Vision is a separate set of models (text GLMs reject image content).
-#   * Pre-4.5 / OCR models have no `thinking` block at all.
-#   * `reasoning_effort` is honoured only by glm-5.2+.
-_GLM_VISION_PREFIXES = ("glm-5v", "glm-4.6v", "glm-4.5v", "glm-ocr")
-_GLM_NO_THINKING_PREFIXES = ("glm-ocr", "glm-4-32b")
+def supports_pdf(provider: str, model: str) -> bool:
+    """Native document input. Anthropic and Gemini take PDFs on every model;
+    OpenAI only via `input_file` on the Responses API; nobody else."""
+    return caps_for(model, provider).supports_pdf
+
+
+def supports_reasoning(provider: str, model: str, level: str | None = None) -> bool:
+    """Can this model honour a `--reasoning` level?
+
+    With no `level`, answers the old question ("does it reason at all?"). With
+    one, answers the sharper question the effort ladder now needs: gpt-5.1 has
+    reasoning but no `max` rung, grok tops out at `high`, and DeepSeek reasons
+    by default while exposing no knob at all.
+    """
+    efforts = caps_for(model, provider).reasoning_efforts
+    if not efforts:
+        return False
+    return True if level is None else level in efforts
+
+
+def reasoning_levels(provider: str, model: str) -> tuple[str, ...]:
+    """The exact `--reasoning` values this model accepts (for error messages)."""
+    return caps_for(model, provider).reasoning_efforts
+
+
+def thinking_dialect(provider: str, model: str) -> str | None:
+    """Which wire translation in `gllm.reasoning` this model's thinking uses."""
+    return caps_for(model, provider).thinking_dialect
+
+
+def supports_strict_schema(provider: str, model: str) -> bool:
+    """Does the API NATIVELY ENFORCE a `--schema`, or would we only be asking
+    nicely in the prompt? gllm refuses `--schema` rather than fake enforcement."""
+    return caps_for(model, provider).supports_strict_schema
+
+
+# --- GLM / Z.AI family splits, still exported for the zai adapter ------------
+# Registry-backed where a row exists, substring-guessed where one doesn't.
 
 
 def is_glm_vision_model(model: str) -> bool:
-    m = (model or "").lower()
-    return any(m.startswith(p) for p in _GLM_VISION_PREFIXES)
+    spec = spec_for(model)
+    if spec is not None:
+        return spec.caps.supports_vision
+    return _legacy_is_glm_vision(model)
 
 
 def glm_supports_thinking(model: str) -> bool:
     """GLM-4.5+ chat/vision models take `thinking.type`; glm-ocr and the pre-4.5
     glm-4-32b do not — sending the block to them risks an error."""
-    m = (model or "").lower()
-    return not any(m.startswith(p) for p in _GLM_NO_THINKING_PREFIXES)
+    spec = spec_for(model)
+    if spec is not None:
+        return spec.caps.thinking_dialect is not None
+    return _legacy_glm_thinking(model)
 
 
 def glm_supports_reasoning_effort(model: str) -> bool:
     """Only glm-5.2 (and above) honour `reasoning_effort`; on every other GLM
     thinking is a binary on/off and the field is meaningless."""
-    return (model or "").lower().startswith("glm-5.2")
+    spec = spec_for(model)
+    if spec is not None:
+        return spec.caps.thinking_dialect == "zai_effort"
+    return _legacy_glm_effort(model)
 
 
-def supports_image(provider: str) -> bool:
-    return provider in _IMAGE_PROVIDERS
-
-
-def supports_pdf(provider: str, model: str) -> bool:
-    if provider in {"anthropic", "azure_anthropic", "gemini"}:
-        return True
-    if provider in {"openai", "azure_openai"}:
-        # OpenAI native PDF input is `input_file` on the Responses API only.
-        return use_responses_api(model)
-    # grok, deepseek: no PDF support today.
-    return False
-
-
-def supports_reasoning(provider: str, model: str) -> bool:
-    """Can this (provider, model) honour a `--reasoning` level?
-
-    Anthropic/Gemini families think across the board. OpenAI-compatible backends
-    only reason on the Responses API (o-series, gpt-5, grok-*) — the Chat
-    Completions models (gpt-4o, gpt-4.1) have no reasoning control. DeepSeek
-    reasons by default but exposes no effort knob, so we cannot honour a level.
-    """
-    if provider in {"anthropic", "azure_anthropic", "gemini"}:
-        return True
-    if provider in {"openai", "azure_openai", "grok"}:
-        return use_responses_api(model)
-    if provider == "zai":
-        # GLM thinks across the 4.5+ line; glm-ocr / glm-4-32b have no thinking.
-        return glm_supports_thinking(model)
-    # deepseek and anything unknown: no control surface.
-    return False
-
-
-# Providers whose API NATIVELY enforces a JSON Schema (strict structured
-# output) via the real API rather than a prompt instruction. gllm refuses
-# `--schema` on anything NOT here, rather than fake enforcement.
-#   * azure_anthropic — Foundry exposes `output_config`; the `format=json_schema`
-#     path is attempted natively but not yet verified (see
-#     AZURE-FOUNDRY-SMOKE-TEST.md). If Foundry rejects it, the API 400s loudly.
-#   * deepseek — the one true faker: no json_schema mode, only
-#     `response_format=json_object`. Kept out so `--schema` errors there.
-_STRICT_SCHEMA_PROVIDERS = {
-    "anthropic",
-    "azure_anthropic",
-    "openai",
-    "azure_openai",
-    "gemini",
-    "grok",
-}
-
-
-def supports_strict_schema(provider: str, model: str) -> bool:
-    """Does this provider natively ENFORCE a `--schema` (not just instruct)?"""
-    return provider in _STRICT_SCHEMA_PROVIDERS
-
-
-# `--models` filter. Two providers leak non-text models past their structured
-# signals: OpenAI-compatible `models.list()` carries no capability metadata at
-# all (just ids), and Gemini's `supported_actions` reports `generateContent` for
+# --- `--models` output filter (NOT registry-backed; see module docstring) -----
+# Two providers leak non-text models past their structured signals:
+# OpenAI-compatible `models.list()` carries no capability metadata at all (just
+# ids), and Gemini's `supported_actions` reports `generateContent` for
 # TTS/image/music models too. So we also blocklist by name: these substrings
 # flag the non-text-generation families (embeddings, speech, image, video,
 # music, robotics, computer-use, moderation). Substring match on the lowercased

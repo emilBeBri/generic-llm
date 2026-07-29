@@ -6,7 +6,7 @@ and verbose logs go to stderr.
 
 Supports Anthropic (Claude), OpenAI (GPT / o-series / gpt-5), Google (Gemini),
 DeepSeek, xAI (Grok), Z.AI (GLM), and Azure AI Foundry (OpenAI + Anthropic).
-Provider is selected from the model name — see [Model routing](#model-routing).
+Provider comes from a model registry, not from the model name — see [Model routing](#model-routing).
 
 ## Install
 
@@ -43,42 +43,79 @@ already live in the `bebri-chat` checkout.
 
 ## Model routing
 
-Provider is inferred from the model name. The Azure Foundry `-dev` suffix is
-the explicit Azure marker and is checked first.
+**Models and providers are two independent axes.** The provider comes from the
+model's row in `src/gllm/models.py`, never from a substring of its name —
+because the lab that *trained* a model tells you nothing about the host that
+*serves* it. `openai/gpt-oss-120b` is an OpenAI model answered by Groq;
+`glm5.2-beta` is a Z.AI model answered by Regolo.
 
-| Model name matches | Provider |
-|---|---|
-| ends in `-dev`, contains `claude` | `azure_anthropic` |
-| ends in `-dev` (otherwise) | `azure_openai` |
-| contains `claude` | `anthropic` |
-| contains `gemini` | `gemini` |
-| contains `deepseek` | `deepseek` |
-| contains `grok` | `grok` |
-| contains `glm` | `zai` (Z.AI / GLM) |
-| anything else (`gpt-*`, `o1/o3/o4`, `codex`) | `openai` |
+| Provider | Adapter | Key |
+|---|---|---|
+| `anthropic` | `anthropic.py` | `ANTHROPIC_API_KEY` |
+| `openai` | `openai.py` | `OPENAI_API_KEY` |
+| `gemini` | `gemini.py` | `GEMINI_API_KEY` / `GOOGLE_API_KEY` |
+| `deepseek` | `deepseek.py` | `DEEPSEEK_API_KEY` |
+| `grok` | `grok.py` | `XAI_API_KEY` |
+| `zai` (GLM) | `zai.py` | `ZAI_API_KEY` |
+| `groq` | `openai_compat.py` | `GROQ_API_KEY` |
+| `regolo` | `openai_compat.py` | `REGOLO_API_KEY` |
+| `azure_openai` | `azure_openai.py` | `AZURE_OPENAI_API_KEY` + `AZURE_FOUNDRY_ENDPOINT` |
+| `azure_anthropic` | `azure_anthropic.py` | `AZURE_ANTHROPIC_API_KEY` + `AZURE_FOUNDRY_ENDPOINT` |
 
 ```sh
+gllm -m claude-opus-5 -r max "..."
+gllm -m gpt-5.6 "..."
 gllm -m deepseek-v4-pro "..."
 gllm -m grok-4.3 "..."
-gllm -m glm-5.2 -r high "..."         # Z.AI / GLM (ZAI_API_KEY)
+gllm -m glm-5.2 -r high "..."         # Z.AI / GLM
 gllm -m glm-4.6v -f shot.png "..."    # GLM vision model
 gllm -m gpt-5.1-dev "..."             # Azure OpenAI (Foundry MaaS)
 gllm -m claude-opus-4-8-dev "..."     # Azure Anthropic (Foundry)
 ```
 
-### Listing models
+### Host providers: `groq:` and `regolo:` keys
 
-Routing is purely prefix-based and the adapters forward the model name verbatim
-to each provider's API, so there is **no model allowlist** — any id the provider
-serves Just Works without a code change. The corollary: don't trust a
-hand-maintained catalog (it drifts; a model the README calls "retired" may be
-live, and vice-versa). Ask the API instead:
+Models served by a host rather than by their own lab carry a namespaced key
+naming the host. Type the prefix; gllm strips it before the wire.
 
 ```sh
-gllm --models              # every provider with a key: one `provider<TAB>id` per line
+gllm -m groq:openai/gpt-oss-120b "..."   # OpenAI's open model, via Groq
+gllm -m regolo:glm5.2-beta "..."         # Z.AI's GLM, via Regolo (EU)
+gllm -m glm-5.2 "..."                    # ...the same family, first-party
+```
+
+Adding another OpenAI-compatible host is a `PROVIDERS` entry plus `MODELS` rows
+— no new adapter code.
+
+### Unknown models are warned, not blocked
+
+A name with no registry row still runs: gllm guesses the provider from the name,
+says so once on stderr, and dispatches.
+
+```
+gllm: 'gemini-9-flash-imaginary' is not in the model registry; routing to
+'gemini' by name guess.
+```
+
+That is deliberate — vendors ship models faster than this repo gets updated, so
+**there is still no model allowlist**. Treat the warning as a red flag on the
+*name* (usually a misremembered or invented slug), then check with `--models`.
+
+### Listing models
+
+The registry says how to *drive* a model; the live API says what *exists*. Only
+the second question rots, so it is asked live. Don't trust a hand-maintained
+catalog for existence (a model the README calls "retired" may be live, and
+vice-versa) — ask the API:
+
+```sh
+gllm --models              # every provider with a key: one `provider<TAB>key` per line
 gllm --models gemini       # just one provider
 gllm --models | rg flash   # plain lines — pipe to rg/fzf
 ```
+
+Host rows are printed with their `groq:`/`regolo:` prefix, so any line pastes
+straight into `-m`.
 
 `--models` probes each provider's live `models.list()` endpoint and prints the
 **text-generation** models it serves right now (embeddings/audio/image/video are
@@ -116,28 +153,43 @@ gllm -m claude-opus-4-8-dev "..."      # -> azure_anthropic (explicit -dev, any 
 
 ## Reasoning effort
 
-`-r/--reasoning low|medium|high|xhigh` is one abstract knob that each provider
+`-r/--reasoning low|medium|high|xhigh|max` is one abstract knob that each provider
 translates to its native control. If omitted, `$DEFAULT_EFFORT` is used when
 set. If neither is set, reasoning is **hands-off** — no reasoning param is sent,
 so the provider's own default applies (no behaviour change).
 
+Not every model has every rung, and the registry knows which. `max` exists on
+Claude Fable 5 / Opus 5 / 4.8 / 4.7 / 4.6 / Sonnet 5 / 4.6, on GPT-5.6 and on
+GLM; grok tops out at `high`.
+
 On a model with **no** reasoning control (gpt-4o, gpt-4.1, deepseek-v4), an
-*explicit* `-r` fails loudly with exit 2 rather than silently ignoring you — but
-a value inherited from `$DEFAULT_EFFORT` is just an ambient default, so it is
-**silently dropped** instead. That lets you keep a global `DEFAULT_EFFORT=low`
-and still pipe to a non-reasoning model without an error.
+*explicit* `-r` fails loudly with exit 2 rather than silently ignoring you. On a
+model that reasons but not at the rung you asked for, it also exits 2 — and
+names the rungs it does take:
+
+```
+gllm: grok model 'grok-4.3' does not accept --reasoning xhigh;
+it accepts low, medium, high.
+```
+
+A value inherited from `$DEFAULT_EFFORT` is an ambient default, not a request,
+so it is never fatal: it is clamped down to the model's top rung, or dropped
+entirely on a model that can't reason. That lets you keep a global
+`DEFAULT_EFFORT=max` and still pipe to anything.
 
 ```sh
-gllm -r high  -m gpt-5.1 "tricky logic puzzle"
-gllm -r xhigh -m claude-opus-4-8 "prove it step by step"
+gllm -r max   -m claude-opus-5 "prove it step by step"
+gllm -r max   -m gpt-5.6 "tricky logic puzzle"
+gllm -r high  -m grok-4.3 "..."
 gllm -r low   -m gemini-3.5-flash "quick sanity check"
 ```
 
-| Provider | Native control | low → xhigh |
+| Provider | Native control | low → top rung |
 |---|---|---|
 | OpenAI / Grok / Azure OpenAI (Responses) | `reasoning.effort` | the level, verbatim |
-| Anthropic 4.6/4.7/4.8 (direct + Azure) | `thinking.adaptive` + `output_config.effort` | the level, verbatim |
+| Anthropic adaptive line — 4.6+ and all of Claude 5 (direct + Azure) | `thinking.adaptive` + `output_config.effort` | the level, verbatim |
 | Anthropic 4.5 & older | `thinking` budget | 8k / 16k / 32k / 32k |
+| Groq / Regolo | `reasoning_effort` (+ `thinking` flag on Regolo) | the level; xhigh/max clamp to high |
 | Gemini | `thinking_budget` | 4k / 8k / 16k / dynamic (`-1`) |
 | Z.AI GLM-5.2 | `thinking.enabled` + `reasoning_effort` | the level, verbatim (`low`/`medium`→high, `xhigh`→max internally) |
 | Z.AI GLM 4.5–5.1 | `thinking.enabled` (binary) | thinking on; effort ignored |
@@ -146,7 +198,7 @@ gllm -r low   -m gemini-3.5-flash "quick sanity check"
 For Anthropic/OpenAI, setting a level also bumps `max_tokens` so reasoning
 doesn't starve the answer, and drops `temperature` (reasoning models reject a
 custom one). One real constraint (found by live testing): modern Claude
-(4.6+) **rejects** the old `thinking.type=enabled` budget shape — it needs
+(4.6+, and the whole Claude 5 line) **rejects** the old `thinking.type=enabled` budget shape — it needs
 `adaptive` + `output_config.effort`. Azure Foundry supports `output_config.effort`
 too (per Microsoft's docs), so effort grades there as well. `xhigh` may exceed
 what an older model supports (some o-series, `grok-3-mini`) — a loud API 400.
@@ -355,7 +407,9 @@ src/gllm/
 ├── config.py           # WORK / WORK_ENV toggle
 ├── domain.py           # Request, Response
 ├── ports.py            # LLMProvider ABC
-├── routing.py          # model-name → provider
+├── models.py           # MODELS registry: the model axis (+ caps)
+├── providers.py        # PROVIDERS registry: the provider axis
+├── routing.py          # model → provider (registry lookup)
 ├── reasoning.py        # --reasoning ladder → per-provider native shape
 └── adapters/
     ├── _capabilities.py # Responses-vs-Chat dispatch + capability gates (shared)

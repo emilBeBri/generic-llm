@@ -5,8 +5,8 @@
 ## The invariant: adapters forward the model name verbatim
 
 gllm has **no catalog gate**. The model string flows `cli → provider_for()`
-(substring match to pick the adapter) `→ adapter.generate()`, and each adapter
-hands `request.model` straight to the SDK call (`client.models.generate_content`,
+(registry lookup to pick the adapter) `→ adapter.generate()`, and each adapter
+hands `request.wire_model or request.model` straight to the SDK call (`client.models.generate_content`,
 `messages.create`, `responses.create`, …). Nothing checks the name against a
 known-models list. Any id the provider's API serves works without a code change;
 any id it doesn't 404s at call time. See [[CONVENTIONS-multi-provider-routing]].
@@ -33,7 +33,8 @@ instead of trusting ourselves. Prints greppable `provider<TAB>id` rows; pipe to
 restricts to one. It short-circuits in `main()` before any prompt/attachment
 handling (needs neither).
 
-- **Listable providers**: anthropic, openai, gemini, grok, deepseek. Azure
+- **Listable providers**: derived from `ProviderSpec.listable` — anthropic,
+  openai, gemini, grok, deepseek, zai, groq, regolo. Azure
   Foundry is excluded — it's *deployment*-scoped (you list your deployments, not
   a global catalog), so it has no equivalent endpoint. See
   [[GOTCHA-azure-foundry-constraints]].
@@ -56,3 +57,23 @@ handling (needs neither).
 `list_models() -> list[str]` is an optional method on the `LLMProvider` port
 (base default raises `NotImplementedError`), implemented per adapter. Grok
 inherits OpenAIProvider's implementation unchanged.
+
+## 2026-07-29: a registry arrived, and it is STILL not an allowlist
+
+[[ADR-provider-model-axis]] added `models.MODELS`, which sounds like exactly the
+hand-maintained catalog this note argues against. It isn't, and the distinction
+is load-bearing:
+
+- The registry answers **how to drive** a model — provider, wire id, thinking
+  dialect, effort rungs, vision/pdf/schema. `--models` answers **what exists**.
+  The second question is the one that rots, and it is still asked live.
+- A name with no row **still runs**. `routing._legacy_guess_provider` guesses the
+  provider from the name, warns once on stderr, and dispatches. Unknown is a red
+  flag, never a refusal — precisely so the cdf6619 failure above cannot repeat in
+  a new costume ("gllm says it's not a real model, so it must be dead").
+- `--models` output is now printed with the host `key_namespace` prefix
+  (`groq:`/`regolo:`) so a row is pasteable straight into `-m`. The rows still
+  come from the live API, not from the registry.
+
+The one thing the registry legitimately buys here: a hallucinated slug now says
+so out loud instead of silently becoming an OpenAI call via the old catch-all.

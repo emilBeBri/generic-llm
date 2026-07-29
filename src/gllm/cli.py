@@ -29,9 +29,12 @@ from .adapters._capabilities import (
     supports_reasoning,
     supports_strict_schema,
 )
+from .adapters._capabilities import reasoning_levels
 from .config import work_env
 from .domain import Attachment, Request
+from .models import wire_id_for
 from .ports import LLMProvider
+from .providers import LISTABLE_PROVIDERS, PROVIDERS
 from .routing import effective_model, provider_for
 
 DEFAULT_MODEL = "deepseek-v4-flash"
@@ -160,45 +163,54 @@ def _load_schema(value: str) -> dict:
 
 
 def _build_provider(name: str) -> LLMProvider:
-    if name == "anthropic":
+    """Construct the adapter for a provider tag.
+
+    Dispatch is on `ProviderSpec.adapter_kind`, so several hosts can share one
+    adapter (groq and regolo are both `openai_compat`). Imports stay per-branch
+    and lazy: a missing SDK must only break its own provider, never the CLI.
+    """
+    spec = PROVIDERS.get(name)
+    if spec is None:
+        raise ValueError(f"unknown provider: {name}")
+
+    kind = spec.adapter_kind
+    if kind == "anthropic":
         from .adapters.anthropic import AnthropicProvider
 
         return AnthropicProvider()
-    if name == "openai":
+    if kind == "openai":
         from .adapters.openai import OpenAIProvider
 
         return OpenAIProvider()
-    if name == "gemini":
+    if kind == "gemini":
         from .adapters.gemini import GeminiProvider
 
         return GeminiProvider()
-    if name == "deepseek":
+    if kind == "deepseek":
         from .adapters.deepseek import DeepSeekProvider
 
         return DeepSeekProvider()
-    if name == "grok":
+    if kind == "grok":
         from .adapters.grok import GrokProvider
 
         return GrokProvider()
-    if name == "zai":
+    if kind == "zai":
         from .adapters.zai import ZaiProvider
 
         return ZaiProvider()
-    if name == "azure_openai":
+    if kind == "openai_compat":
+        from .adapters.openai_compat import OpenAICompatProvider
+
+        return OpenAICompatProvider(spec)
+    if kind == "azure_openai":
         from .adapters.azure_openai import AzureOpenAIProvider
 
         return AzureOpenAIProvider()
-    if name == "azure_anthropic":
+    if kind == "azure_anthropic":
         from .adapters.azure_anthropic import AzureAnthropicProvider
 
         return AzureAnthropicProvider()
-    raise ValueError(f"unknown provider: {name}")
-
-
-# Providers whose live API exposes a model catalog we can probe. Azure Foundry
-# is excluded: it's deployment-scoped (you list *your* deployments, not a global
-# catalog), so it has no equivalent `models.list()`.
-_LISTABLE_PROVIDERS = ("anthropic", "openai", "gemini", "grok", "deepseek", "zai")
+    raise ValueError(f"unknown adapter kind: {kind!r} (provider {name!r})")
 
 
 def _run_models(which: str) -> int:
@@ -212,16 +224,16 @@ def _run_models(which: str) -> int:
     line and is skipped — never a silent drop.
     """
     if which and which != "*":
-        if which not in _LISTABLE_PROVIDERS:
+        if which not in LISTABLE_PROVIDERS:
             print(
                 f"gllm: --models: unknown provider {which!r}; choose from "
-                f"{', '.join(_LISTABLE_PROVIDERS)}.",
+                f"{', '.join(LISTABLE_PROVIDERS)}.",
                 file=sys.stderr,
             )
             return 2
         targets: tuple[str, ...] = (which,)
     else:
-        targets = _LISTABLE_PROVIDERS
+        targets = LISTABLE_PROVIDERS
 
     any_ok = False
     for name in targets:
@@ -230,8 +242,11 @@ def _run_models(which: str) -> int:
         except Exception as e:
             print(f"gllm: {name}: skipped ({type(e).__name__}: {e})", file=sys.stderr)
             continue
+        # Host providers namespace their registry keys, so print the key rather
+        # than the bare wire id — a printed row should be pasteable into `-m`.
+        prefix = PROVIDERS[name].key_namespace or ""
         for mid in models:
-            print(f"{name}\t{mid}")
+            print(f"{name}\t{prefix}{mid}")
         any_ok = True
     return 0 if any_ok else 1
 
@@ -389,9 +404,27 @@ def main(argv: list[str] | None = None) -> int:
     # a hard error (fail loud). But an ambient $DEFAULT_EFFORT must not block
     # non-reasoning models like gpt-4.1 — drop it silently and carry on. Done
     # before the status print so the printed model:reasoning line is truthful.
-    if args.reasoning and not supports_reasoning(provider_name, args.model):
+    #
+    # Two distinct refusals now that the ladder has a `max` rung: the model has
+    # no reasoning control at all, or it has one but not at this level (grok
+    # tops out at `high`, gpt-5.1 at `xhigh`).
+    if args.reasoning and not supports_reasoning(
+        provider_name, args.model, args.reasoning
+    ):
+        accepted = reasoning_levels(provider_name, args.model)
         if reasoning_was_defaulted:
-            args.reasoning = None
+            # Ambient default: never block. Clamp to the model's top rung if it
+            # reasons at all, otherwise drop the level entirely.
+            args.reasoning = (
+                max(accepted, key=reasoning_mod.LEVELS.index) if accepted else None
+            )
+        elif accepted:
+            print(
+                f"gllm: {provider_name} model {args.model!r} does not accept "
+                f"--reasoning {args.reasoning}; it accepts {', '.join(accepted)}.",
+                file=sys.stderr,
+            )
+            return 2
         else:
             print(
                 f"gllm: {provider_name} model {args.model!r} has no reasoning "
@@ -451,6 +484,9 @@ def main(argv: list[str] | None = None) -> int:
         prompt=prompt,
         system=system,
         model=args.model,
+        # Namespaced host keys ('groq:openai/gpt-oss-120b') are gllm's identity
+        # for the model; the host itself only knows the bare id.
+        wire_model=wire_id_for(args.model),
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         schema=schema,
@@ -479,7 +515,7 @@ def main(argv: list[str] | None = None) -> int:
             "pdf" if a.mime_type == "application/pdf" else a.mime_type
         )
         ok = (
-            supports_image(provider_name) if kind == "image"
+            supports_image(provider_name, args.model) if kind == "image"
             else supports_pdf(provider_name, args.model) if kind == "pdf"
             else False
         )

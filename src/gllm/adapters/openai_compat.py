@@ -1,0 +1,167 @@
+"""Generic OpenAI-compatible host adapter.
+
+One adapter parameterised by a `ProviderSpec`, for hosts that serve *other
+labs'* open models behind the OpenAI Chat Completions wire format: Groq,
+Regolo, and whatever comes next. Adding host number three should be a
+`PROVIDERS` entry plus `MODELS` rows and **zero new code** — that is the whole
+point of the provider axis.
+
+Standalone, not an `OpenAIProvider` subclass: that one routes by name to the
+Responses API, which these hosts do not speak (same reasoning as the Z.AI
+adapter — see .llm-memory/CONVENTIONS-zai-glm-adapter.md).
+
+Host quirks are config, not branches:
+- `ProviderSpec.extra_body` is merged into every call. Regolo NEEDS
+  `disable_fallbacks`: without it the host silently answers with a DIFFERENT
+  model than you asked for, which makes model identity, cost accounting and
+  every capability gate a lie.
+- `ProviderSpec.image_url_format_field` adds Regolo's `{"format": <mime>}`
+  inside `image_url` blocks.
+- Thinking follows `ModelCaps.thinking_dialect`: `compat_effort` sends a bare
+  `reasoning_effort` (Groq), `compat_thinking_flag` pairs it with a top-level
+  `thinking` flag (Regolo).
+
+Neither host enforces a JSON Schema and neither takes documents, so `--schema`
+and PDFs are refused. `--json` (best-effort `json_object`) still works.
+"""
+
+from __future__ import annotations
+
+import base64
+import os
+
+from openai import OpenAI
+
+from ..domain import Attachment, Request, Response
+from ..models import caps_for
+from ..ports import LLMProvider
+from ..providers import ProviderSpec
+from ..reasoning import compat_effort
+from ..usage import from_openai_chat
+from ._capabilities import is_text_generation_model
+
+
+class OpenAICompatProvider(LLMProvider):
+    """An OpenAI-compatible host, described entirely by its ProviderSpec."""
+
+    def __init__(self, spec: ProviderSpec, api_key: str | None = None):
+        self.spec = spec
+        self.name = spec.tag
+        key = api_key or _first_env(spec.api_key_env)
+        if not key:
+            expected = " or ".join(spec.api_key_env)
+            raise RuntimeError(f"{expected} is not set")
+        self.client = OpenAI(api_key=key, base_url=spec.base_url, max_retries=3)
+
+    def list_models(self) -> list[str]:
+        return sorted(
+            m.id
+            for m in self.client.models.list()
+            if is_text_generation_model(m.id)
+        )
+
+    def generate(self, request: Request) -> Response:
+        if request.schema is not None:
+            raise RuntimeError(
+                f"{self.name} has no native JSON-schema enforcement (only "
+                f"response_format=json_object); --schema would be faked via a "
+                f"prompt instruction with no guarantee. Refusing. Use --json for "
+                f"best-effort JSON instead."
+            )
+
+        model = request.wire_model or request.model
+        caps = caps_for(request.model, self.name)
+
+        messages = []
+        if request.system:
+            messages.append({"role": "system", "content": request.system})
+        messages.append({
+            "role": "user",
+            "content": self._user_content(request, caps.supports_vision),
+        })
+
+        reasoning_on = request.reasoning is not None
+        # Thinking tokens count against the output budget; raise the floor so the
+        # visible answer isn't starved (mirrors the gemini/openai/zai adapters).
+        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
+
+        kwargs: dict = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_out,
+        }
+        if request.temperature is not None:
+            kwargs["temperature"] = request.temperature
+        if request.json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        extra_body = dict(self.spec.extra_body)
+        if reasoning_on:
+            if caps.thinking_dialect is None:
+                raise RuntimeError(
+                    f"{self.name} model {request.model!r} has no reasoning "
+                    f"control; drop --reasoning."
+                )
+            kwargs["reasoning_effort"] = compat_effort(request.reasoning)
+            if caps.thinking_dialect == "compat_thinking_flag":
+                extra_body["thinking"] = True
+        if extra_body:
+            kwargs["extra_body"] = extra_body
+
+        resp = self.client.chat.completions.create(**kwargs)
+
+        message = resp.choices[0].message
+        # Chain-of-thought arrives in `reasoning_content` on these hosts. gllm is
+        # one-shot and prints the answer only, so it is deliberately discarded.
+        text = message.content or ""
+
+        return Response(
+            text=text,
+            # Report the registry key, not the wire id: it is what --usage,
+            # pricing and the user all identify the model by.
+            model=request.model or model,
+            provider=self.name,
+            raw=resp,
+            **from_openai_chat(getattr(resp, "usage", None)),
+        )
+
+    def _user_content(self, request: Request, vision: bool):
+        """Plain string for text turns; a multimodal `[text, image_url...]` array
+        for vision models with image attachments."""
+        for a in request.attachments:
+            if a.mime_type == "application/pdf":
+                raise RuntimeError(
+                    f"{self.name} does not accept PDF attachments. Use "
+                    f"claude-opus-5 or gemini-3.6-flash for documents."
+                )
+            if not a.mime_type.startswith("image/"):
+                raise RuntimeError(
+                    f"{self.name} cannot encode attachment {a.source_label!r} "
+                    f"(mime {a.mime_type})."
+                )
+
+        if not request.attachments:
+            return request.prompt
+        if not vision:
+            raise RuntimeError(
+                f"{self.name} model {request.model!r} is not a vision model; it "
+                f"cannot accept images."
+            )
+        parts: list[dict] = [{"type": "text", "text": request.prompt}]
+        parts.extend(self._image_part(a) for a in request.attachments)
+        return parts
+
+    def _image_part(self, a: Attachment) -> dict:
+        b64 = base64.b64encode(a.data).decode()
+        image_url: dict = {"url": f"data:{a.mime_type};base64,{b64}"}
+        if self.spec.image_url_format_field:
+            image_url["format"] = a.mime_type
+        return {"type": "image_url", "image_url": image_url}
+
+
+def _first_env(names: tuple[str, ...]) -> str | None:
+    for n in names:
+        v = os.environ.get(n)
+        if v:
+            return v
+    return None

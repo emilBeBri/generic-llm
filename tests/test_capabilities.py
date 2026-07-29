@@ -19,15 +19,29 @@ def test_chat_completions_models():
 
 
 def test_image_capability_matrix():
-    assert supports_image("anthropic")
-    assert supports_image("azure_anthropic")
-    assert supports_image("openai")
-    assert supports_image("azure_openai")
-    assert supports_image("gemini")
-    assert supports_image("grok")
-    # GLM has vision models, but the per-model split is enforced in the adapter.
-    assert supports_image("zai")
-    assert not supports_image("deepseek")
+    assert supports_image("anthropic", "claude-opus-5")
+    assert supports_image("azure_anthropic", "claude-opus-4-8-dev")
+    assert supports_image("openai", "gpt-5.6")
+    assert supports_image("azure_openai", "gpt-5.1-dev")
+    assert supports_image("gemini", "gemini-3.6-flash")
+    assert supports_image("grok", "grok-4.3")
+    assert not supports_image("deepseek", "deepseek-v4-flash")
+
+
+def test_image_capability_is_per_model_on_glm():
+    # Vision is a separate GLM model LINE, so 'can zai take an image' has no
+    # honest provider-level answer — it is a per-model fact, and the registry
+    # is where it now lives (it used to be an adapter-internal raise).
+    assert supports_image("zai", "glm-4.6v")
+    assert supports_image("zai", "glm-5v-turbo")
+    assert not supports_image("zai", "glm-5.2")
+    assert not supports_image("zai", "glm-4.7")
+
+
+def test_image_capability_on_compat_hosts():
+    # Groq/Regolo rows we carry are text-only today.
+    assert not supports_image("groq", "groq:openai/gpt-oss-120b")
+    assert not supports_image("regolo", "regolo:qwen3.5-122b")
 
 
 def test_glm_vision_split():

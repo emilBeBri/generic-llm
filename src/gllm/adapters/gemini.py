@@ -88,7 +88,7 @@ class GeminiProvider(LLMProvider):
             contents = request.prompt
 
         resp = self.client.models.generate_content(
-            model=request.model,
+            model=request.wire_model or request.model,
             contents=contents,
             config=config,
         )
@@ -97,7 +97,7 @@ class GeminiProvider(LLMProvider):
 
         return Response(
             text=text,
-            model=request.model,
+            model=request.model,  # registry key, not the wire id
             provider=self.name,
             raw=resp,
             **from_gemini(getattr(resp, "usage_metadata", None)),

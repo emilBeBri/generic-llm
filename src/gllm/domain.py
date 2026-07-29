@@ -28,7 +28,13 @@ class Attachment:
 class Request:
     prompt: str
     system: str | None = None
+    # The app-facing model identity: the registry key, what the user typed after
+    # -m, and the join key for pricing and `--usage`.
     model: str = ""
+    # The literal string to put on the wire. Differs from `model` only for
+    # namespaced host rows ('groq:openai/gpt-oss-120b' -> 'openai/gpt-oss-120b').
+    # Empty means "same as model" — adapters read `wire_model or model`.
+    wire_model: str = ""
     max_tokens: int = 4096
     temperature: float | None = None
     # JSON Schema (dict). When set, response.text is guaranteed to be JSON

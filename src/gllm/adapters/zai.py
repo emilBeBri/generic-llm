@@ -85,7 +85,7 @@ class ZaiProvider(LLMProvider):
         max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
 
         kwargs: dict = {
-            "model": request.model,
+            "model": request.wire_model or request.model,
             "messages": messages,
             "max_tokens": max_out,
         }

@@ -29,6 +29,7 @@ import os
 from ..domain import Request, Response
 from ..ports import LLMProvider
 from ..reasoning import anthropic_thinking
+from ._capabilities import thinking_dialect
 from ..usage import from_anthropic
 from .anthropic import _anthropic_content
 
@@ -74,7 +75,7 @@ class AzureAnthropicProvider(LLMProvider):
         content = _anthropic_content(request.prompt, request.attachments)
         reasoning_on = request.reasoning is not None
         kwargs: dict = {
-            "model": request.model,
+            "model": request.wire_model or request.model,
             "max_tokens": request.max_tokens,
             "messages": [{"role": "user", "content": content}],
         }
@@ -86,7 +87,13 @@ class AzureAnthropicProvider(LLMProvider):
 
         effort: str | None = None
         if reasoning_on:
-            r = anthropic_thinking(request.reasoning, request.model)
+            # Dialect from the model's registry row: 4.6+ and the 5 family
+            # REQUIRE thinking.type=adaptive and reject enabled+budget_tokens.
+            r = anthropic_thinking(
+                request.reasoning,
+                request.model,
+                thinking_dialect(self.name, request.model),
+            )
             kwargs["thinking"] = r["thinking"]
             kwargs["max_tokens"] = max(kwargs["max_tokens"], r["min_max_tokens"])
             effort = r.get("effort")

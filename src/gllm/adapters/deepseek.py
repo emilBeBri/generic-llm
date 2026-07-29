@@ -68,7 +68,7 @@ class DeepSeekProvider(LLMProvider):
         messages.append({"role": "user", "content": request.prompt})
 
         kwargs: dict = {
-            "model": request.model,
+            "model": request.wire_model or request.model,
             "messages": messages,
             "max_tokens": request.max_tokens,
         }

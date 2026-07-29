@@ -26,7 +26,7 @@ def test_openai_effort_roundtrips(level):
 
 def test_openai_effort_rejects_unknown():
     with pytest.raises(ValueError):
-        openai_effort("max")
+        openai_effort("ludicrous")
 
 
 # --- zai_effort (GLM reasoning_effort) ---------------------------------------
@@ -40,7 +40,7 @@ def test_zai_effort_roundtrips(level):
 
 def test_zai_effort_rejects_unknown():
     with pytest.raises(ValueError):
-        zai_effort("max")
+        zai_effort("ludicrous")
 
 
 # --- anthropic_thinking ------------------------------------------------------
@@ -55,6 +55,27 @@ def test_anthropic_adaptive_family_uses_adaptive_plus_effort():
             assert r["thinking"] == {"type": "adaptive", "display": "summarized"}
             assert r["effort"] == level
             assert r["min_max_tokens"] == 64000
+
+
+def test_claude_5_family_uses_adaptive():
+    """Regression: the Claude 5 line REJECTS enabled+budget_tokens.
+
+    The old `_is_adaptive_family` matched only the strings 4-6/4-7/4-8, so
+    claude-opus-5 / sonnet-5 / fable-5 were handed the retired interface and
+    every `-r` call against them 400'd. The dialect now comes from the registry.
+    """
+    for model in ("claude-opus-5", "claude-sonnet-5", "claude-fable-5"):
+        r = anthropic_thinking("high", model)
+        assert r["thinking"] == {"type": "adaptive", "display": "summarized"}, model
+        assert r["effort"] == "high"
+        assert r["min_max_tokens"] == 64000
+
+
+def test_max_rung_reaches_the_adaptive_models():
+    for model in ("claude-opus-5", "claude-fable-5", "claude-opus-4-8"):
+        r = anthropic_thinking("max", model)
+        assert r["thinking"]["type"] == "adaptive"
+        assert r["effort"] == "max"
 
 
 def test_anthropic_old_family_uses_enabled_budget_no_effort():

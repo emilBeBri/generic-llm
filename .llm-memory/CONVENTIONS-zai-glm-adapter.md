@@ -63,3 +63,28 @@ helpers, supports_reasoning + _IMAGE_PROVIDERS) · `reasoning.py` (zai_effort).
 External docs at `~/source-docs/zai-docs/` (thinking, struct_output,
 chat_completion reference, vlm/glm_4_6v). bebri-chat reference adapter +
 `.llm-memory/zai-glm-integration.md`.
+
+## 2026-07-29: the family splits are registry data now
+
+The GLM capability splits used to be prefix tuples in `_capabilities.py`
+(`_GLM_VISION_PREFIXES`, `_GLM_NO_THINKING_PREFIXES`, and a
+`startswith("glm-5.2")` check for `reasoning_effort`). They are now
+`ModelCaps` on each GLM row in `models.py`:
+
+| caps preset | rows | thinking |
+|---|---|---|
+| `_GLM_EFFORT` | glm-5.2 | `thinking` + `reasoning_effort` |
+| `_GLM_THINK` | glm-5.1 … glm-4.5* | `thinking` only |
+| `_GLM_NO_THINK` | glm-4-32b-0414-128k | none |
+| `_GLM_VISION_THINK` | glm-5v-turbo, glm-4.6v*, glm-4.5v | `thinking`, + images |
+| `_GLM_VISION_NO_THINK` | glm-ocr | none, + images |
+
+The consequence worth knowing: **`supports_image` now takes a model**, so the
+vision split is refused by the CLI's native-or-fail gate before dispatch rather
+than by an in-adapter raise. `is_glm_vision_model` / `glm_supports_thinking` /
+`glm_supports_reasoning_effort` still exist and still work — they read the
+registry row first and fall back to the old prefixes for an unregistered
+`glm-*` name. See [[ADR-provider-model-axis]].
+
+Z.AI's GLM models are also served third-party: `regolo:glm5.2-beta` is the same
+family via [[ADR-provider-model-axis]]'s `openai_compat` adapter, `family='glm-5.2'`.

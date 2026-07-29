@@ -1,41 +1,60 @@
 # Convention: provider routing & OpenAI-compatible adapters
 
-How `gllm` picks a provider from a model name, and how OpenAI-compatible backends are added cheaply. Ported from bebri-chat's `get_model_provider` / `MultiProviderRouter` on 2026-05-25, reduced to gllm's sync one-shot `Request -> Response` shape (no tools, no conversation, no thinking config).
+How `gllm` picks a provider for a model, and how OpenAI-compatible backends are added cheaply. Ported from bebri-chat's `get_model_provider` / `MultiProviderRouter` on 2026-05-25, reduced to gllm's sync one-shot `Request -> Response` shape (no tools, no conversation, no thinking config).
 
 `#convention` `#architecture-decision-record`
 
-## Routing — `routing.provider_for(model)`
+## Routing — SUPERSEDED 2026-07-29 by [[ADR-provider-model-axis]]
 
-Pure model-name inference, no config. Order matters: the Azure `-dev` suffix is checked **first**.
+`routing.provider_for(model)` is now a lookup in the `models.MODELS` registry, not name inference. The table below is the **historical** ladder; in code it survives only as `routing._legacy_guess_provider`, for names with no registry row, and it warns on stderr when it fires.
 
 | Model name matches | Provider | Adapter |
 |---|---|---|
+| starts `groq:` / `regolo:` | that host | `openai_compat.py` |
 | ends `-dev` + contains `claude` | `azure_anthropic` | `azure_anthropic.py` |
 | ends `-dev` (else) | `azure_openai` | `azure_openai.py` |
 | contains `claude` | `anthropic` | `anthropic.py` |
 | contains `gemini` | `gemini` | `gemini.py` |
 | contains `deepseek` | `deepseek` | `deepseek.py` |
 | contains `grok` | `grok` | `grok.py` |
+| contains `glm` | `zai` | `zai.py` |
 | else (`gpt-*`, `o1/o3/o4`, `codex`) | `openai` | `openai.py` |
 
-**The `-dev` suffix is the Azure Foundry marker.** This is the one non-obvious bit: `claude-opus-4-7` hits the direct Anthropic API, `claude-opus-4-7-dev` hits Azure Foundry. Mirrors bebri-chat exactly. `cli._build_provider` maps the provider string to a lazily-imported adapter class.
+Why it had to go: the ladder assumes a model name names its *vendor*, but hosts serve other labs' models — `groq:deepseek-r1-distill-llama-70b` would have routed to `api.deepseek.com`, and `groq:qwen/qwen3-32b` matched nothing and fell through to the OpenAI catch-all. The host-namespace branch at the top of the fallback is a patch so it stops misfiring; the real fix is the registry.
 
-`routing.effective_model(model, work)` is the WORK-mode front door to the same suffix: under `WORK=1` it appends `-dev` to direct Anthropic/OpenAI names (set `_AZURE_REDIRECTABLE`), so a clean `claude-opus-4-8` routes to Azure with deployment name `claude-opus-4-8-dev`. `cli.main` calls it right after resolving `-m`. WORK is **only** this routing toggle — it has nothing to do with reasoning (see [[GOTCHA-azure-foundry-constraints]] and [[ADR-reasoning-effort-ladder]]).
+`cli._build_provider` now dispatches on `PROVIDERS[name].adapter_kind` (a string key), still via lazily-imported adapter classes so a missing SDK only breaks its own provider.
 
-## OpenAI-compatible backends subclass `OpenAIProvider`
+`routing.effective_model(model, work)` is the WORK-mode Azure redirect. It reads `ModelSpec.azure_alias` instead of appending `-dev`; a registered Anthropic/OpenAI model with no alias still gets the append, but loudly. `cli.main` calls it right after resolving `-m`. WORK is **only** this routing toggle — it has nothing to do with reasoning (see [[GOTCHA-azure-foundry-constraints]] and [[ADR-reasoning-effort-ladder]]).
 
-DeepSeek, Grok, and Azure OpenAI all speak the OpenAI wire protocol. Rather than duplicate the Responses/Chat-Completions logic, `OpenAIProvider.__init__` takes optional `base_url=` and `name=`. The subclass just supplies a base_url, its own key env var, and a provider tag:
+## OpenAI-compatible backends: subclass, or the generic compat adapter
 
-- `grok.py` — `GrokProvider(OpenAIProvider)`, `base_url=https://api.x.ai/v1`, key `XAI_API_KEY`. Grok speaks the **Responses** API, so `grok` is in `_capabilities._RESPONSES_API_PREFIXES`.
-- `azure_openai.py` — `AzureOpenAIProvider(OpenAIProvider)`, base_url from `AZURE_FOUNDRY_ENDPOINT` (+`/v1/`), key `AZURE_OPENAI_API_KEY`. The `-dev` suffix doesn't disturb dispatch — `use_responses_api` keys off the prefix (`gpt-5.1-dev`->Responses, `gpt-4o-dev`->Chat).
-- `deepseek.py` — does *not* subclass (it's Chat-Completions-only and has no native json_schema; see body), but uses the same `openai.OpenAI` client pointed at `https://api.deepseek.com`.
+Two shapes, and the question that picks between them is **"is this host's wire protocol the OpenAI Responses API with only `base_url` differing?"**
 
-`_capabilities.use_responses_api` is the single source of truth for Responses-vs-Chat dispatch, shared by `openai.py` and `azure_openai.py` (via inheritance). Unknown slugs default to Responses (the strict superset).
+**Subclass `OpenAIProvider`** when yes. `OpenAIProvider.__init__` takes optional `base_url=` and `name=`; the subclass supplies a base_url, its own key env var, and a provider tag:
 
-## Anthropic family thinking — 4-6 / 4-7 / 4-8 are one bucket
+- `grok.py` — `GrokProvider(OpenAIProvider)`, `base_url=https://api.x.ai/v1`, key `XAI_API_KEY`. Grok speaks the **Responses** API.
+- `azure_openai.py` — `AzureOpenAIProvider(OpenAIProvider)`, base_url from `AZURE_FOUNDRY_ENDPOINT` (+`/v1/`), key `AZURE_OPENAI_API_KEY`. The `-dev` suffix doesn't disturb dispatch.
 
-`reasoning._is_adaptive_family` treats Claude **4-6, 4-7, and 4-8** identically: `thinking={type:"adaptive", display:"summarized"}`, `max_tokens=64000`, with the effort graded by `output_config.effort` (= the `--reasoning` level) on **both** the direct API and Azure Foundry (Foundry supports `effort` — see [[GOTCHA-azure-foundry-constraints]]). These models **reject** the old `enabled`+`budget_tokens` shape (live-verified 400 — see [[ADR-reasoning-effort-ladder]]); 4-5 & older still use it. When a new family lands (4-9, 5-x), add it to `_is_adaptive_family`. `display:"summarized"` is mandatory on 4-7+ (default flipped to `omitted`, which suppresses streaming thinking deltas — terminal looks hung).
+**Standalone** when no — the parent would route the model to Responses, which the host can't speak:
+
+- `deepseek.py` — Chat-Completions only, no native json_schema. `openai.OpenAI` at `https://api.deepseek.com`.
+- `zai.py` — same reasoning plus GLM's own thinking/vision shape. See [[CONVENTIONS-zai-glm-adapter]].
+- `openai_compat.py` — the **generic** one, parameterised by a `ProviderSpec` (base_url, extra_body, image dialect). Serves `groq` and `regolo` today; the next host should be a `PROVIDERS` row + `MODELS` rows + prices and **zero new code**.
+
+`_capabilities.use_responses_api` remains the single source of truth for Responses-vs-Chat dispatch, but now reads `ModelCaps.api_surface` from the registry (falling back to the old prefix check for unregistered names). Unknown slugs still default to Responses, the strict superset.
+
+## Anthropic family thinking — dialect is registry data, not a substring
+
+Historically `reasoning._is_adaptive_family` matched the literal strings `4-6`/`4-7`/`4-8`. **That was a bug the moment the Claude 5 line shipped**: `claude-opus-5`, `claude-sonnet-5` and `claude-fable-5` fell through to the retired `enabled`+`budget_tokens` shape, which those models reject with a 400. Every `-r` call against Claude 5 was broken until 2026-07-29.
+
+The dialect now comes from `ModelCaps.thinking_dialect` on the model's row, so a new family is a registry row, not a string edit:
+
+- `anthropic_adaptive` (Claude 4.6/4.7/4.8, Sonnet 4.6, and the whole 5 line) — `thinking={type:"adaptive", display:"summarized"}`, `max_tokens=64000`, effort graded by `output_config.effort` on **both** the direct API and Azure Foundry.
+- `anthropic_budget` (4.5 and older) — `enabled`+`budget_tokens`.
+
+`display:"summarized"` stays mandatory on 4-7+ (the default flipped to `omitted`, which suppresses streaming thinking deltas — the terminal looks hung).
 
 ## Related
+- [[ADR-provider-model-axis]] — the registry that replaced the ladder.
 - [[GOTCHA-azure-foundry-constraints]] — Azure adapter specifics (Foundry DOES expose `output_config`; `effort` verified, `format` an unverified attempt; the `WORK` routing toggle; endpoint rewriting).
 - [[CONVENTIONS-schemas-and-instructions]] — the json_schema strict-mode convention these adapters consume.
