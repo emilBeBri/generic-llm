@@ -118,16 +118,37 @@ _GEMINI = ModelCaps(
     supports_strict_schema=True,
 )
 
-# --- xAI. Responses API byte-for-byte, but reasoning_effort tops out at `high`
-# (docs.x.ai: none|low|medium|high) and there is no input_file for PDFs.
+# --- xAI. Responses API byte-for-byte; no input_file, so no PDFs.
+#
+# The effort vocabulary is per-model and does NOT follow the docs, which
+# describe only grok-4.5's low/medium/high. Probed against the live API
+# 2026-07-29 (`reasoning={"effort": ...}` on /v1/responses):
+#
+#   grok-4.5                      low medium high xhigh   (no none, no max)
+#   grok-4.3                      low medium high xhigh   (+ none, absent from our ladder)
+#   grok-4.20-multi-agent-0309    everything, max included
+#   grok-4.20-0309-reasoning      400: "does not support parameter reasoningEffort"
+#   grok-4.20-0309-non-reasoning  400: same
+#   grok-build-0.1                400: same
+#
+# Note the trap in that list: grok-4.20-0309-reasoning IS a reasoning model
+# and reasons happily with no `reasoning` key at all — it just exposes no
+# effort knob, exactly like DeepSeek. "Reasons" and "can be graded" are
+# different questions, and only the second one belongs in reasoning_efforts.
 _GROK = ModelCaps(
     api_surface="responses",
-    reasoning_efforts=("low", "medium", "high"),
+    reasoning_efforts=("low", "medium", "high", "xhigh"),
     thinking_dialect="openai_effort",
     supports_vision=True,
     supports_strict_schema=True,
 )
-_GROK_NO_REASONING = _GROK._replace(reasoning_efforts=(), thinking_dialect=None)
+# Multi-agent grades AGENT COUNT (4 vs 16) rather than depth, and takes the
+# whole ladder.
+_GROK_MULTI_AGENT = _GROK._replace(
+    reasoning_efforts=("low", "medium", "high", "xhigh", "max")
+)
+# Reasons, but rejects `reasoning_effort` outright.
+_GROK_NO_EFFORT = _GROK._replace(reasoning_efforts=(), thinking_dialect=None)
 
 # --- DeepSeek. Reasons by default but exposes NO effort knob, and has only
 # response_format=json_object (no schema enforcement). Nothing to gate on.
@@ -381,18 +402,19 @@ MODELS: dict[str, ModelSpec] = {
         "grok-4.3", "grok", 1_000_000, _GROK, alt_model="grok-4.5"
     ),
     "grok-4.20-0309-reasoning": ModelSpec(
-        "grok-4.20-0309-reasoning", "grok", 1_000_000, _GROK, alt_model="grok-4.3"
-    ),
-    "grok-4.20-0309-non-reasoning": ModelSpec(
-        "grok-4.20-0309-non-reasoning", "grok", 1_000_000, _GROK_NO_REASONING,
+        "grok-4.20-0309-reasoning", "grok", 1_000_000, _GROK_NO_EFFORT,
         alt_model="grok-4.3",
     ),
-    # Multi-agent: reasoning effort controls agent count (4 vs 16), not depth.
+    "grok-4.20-0309-non-reasoning": ModelSpec(
+        "grok-4.20-0309-non-reasoning", "grok", 1_000_000, _GROK_NO_EFFORT,
+        alt_model="grok-4.3",
+    ),
     "grok-4.20-multi-agent-0309": ModelSpec(
-        "grok-4.20-multi-agent-0309", "grok", 2_000_000, _GROK, alt_model="grok-4.3"
+        "grok-4.20-multi-agent-0309", "grok", 2_000_000, _GROK_MULTI_AGENT,
+        alt_model="grok-4.3",
     ),
     "grok-build-0.1": ModelSpec(
-        "grok-build-0.1", "grok", 256_000, _GROK, alt_model="grok-4.5"
+        "grok-build-0.1", "grok", 256_000, _GROK_NO_EFFORT, alt_model="grok-4.5"
     ),
     # ----------------------------------------------------------------- #
     # Z.AI / GLM. Bare ids — nothing else in the registry contains "glm".
