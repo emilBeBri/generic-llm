@@ -14,7 +14,7 @@ import pytest
 
 from gllm.models import MODELS, ModelCaps, caps_for, spec_for, wire_id_for
 from gllm.providers import LISTABLE_PROVIDERS, PROVIDERS
-from gllm.reasoning import LEVELS
+from gllm.reasoning import _RANK
 
 _OPENAI_FAMILY = {"openai", "azure_openai", "grok"}
 _AZURE = {"azure_openai", "azure_anthropic"}
@@ -25,6 +25,7 @@ _VALID_DIALECTS = {
     "openai_effort",
     "zai_effort",
     "zai_thinking",
+    "deepseek_effort",
     "compat_effort",
     "compat_thinking_flag",
 }
@@ -136,13 +137,16 @@ def test_context_windows_are_plausible():
 # --- capabilities ------------------------------------------------------------
 
 
-def test_reasoning_efforts_are_ladder_values_in_order():
+def test_native_efforts_are_known_words_in_cheapest_first_order():
+    """`native_efforts` is the PROVIDER's vocabulary, not gllm's ladder, so it
+    may contain words gllm never exposes (`none`, `max`). Order is load-bearing:
+    `resolve_effort` reads `native[-1]` as the top rung."""
     for key, spec in MODELS.items():
-        efforts = spec.caps.reasoning_efforts
-        for level in efforts:
-            assert level in LEVELS, f"{key}: {level!r} is not a ladder rung"
-        ranked = sorted(efforts, key=LEVELS.index)
-        assert list(efforts) == ranked, f"{key}: efforts are not in ladder order"
+        efforts = spec.caps.native_efforts
+        for word in efforts:
+            assert word in _RANK, f"{key}: {word!r} is not a known effort word"
+        ranked = sorted(efforts, key=_RANK.index)
+        assert list(efforts) == ranked, f"{key}: not ordered cheapest-first"
 
 
 def test_thinking_dialect_and_efforts_agree():
@@ -150,7 +154,7 @@ def test_thinking_dialect_and_efforts_agree():
     translation gap. Either both or neither."""
     for key, spec in MODELS.items():
         has_dialect = spec.caps.thinking_dialect is not None
-        has_efforts = bool(spec.caps.reasoning_efforts)
+        has_efforts = bool(spec.caps.native_efforts)
         assert has_dialect == has_efforts, key
         if has_dialect:
             assert spec.caps.thinking_dialect in _VALID_DIALECTS, key
@@ -165,6 +169,7 @@ def test_dialect_matches_provider():
         "azure_openai": "openai_",
         "grok": "openai_",
         "zai": "zai_",
+        "deepseek": "deepseek_",
         "groq": "compat_",
         "regolo": "compat_",
     }
@@ -188,7 +193,7 @@ def test_chat_surface_models_have_no_pdf_or_reasoning():
     for key, spec in MODELS.items():
         if spec.caps.api_surface == "chat":
             assert not spec.caps.supports_pdf, key
-            assert not spec.caps.reasoning_efforts, key
+            assert not spec.caps.native_efforts, key
 
 
 def test_pdf_capable_models_are_also_vision_capable():
@@ -216,7 +221,7 @@ def test_caps_for_unknown_model_falls_back_not_raises():
     assert isinstance(caps, ModelCaps)
     # Unknown OpenAI-family names default to Responses, the strict superset.
     assert caps.api_surface == "responses"
-    assert caps.reasoning_efforts  # granted every rung; the API is the one to 400
+    assert caps.native_efforts  # guessed, not refused — the API is the one to 400
 
 
 def test_bundled_price_overrides_name_real_models():

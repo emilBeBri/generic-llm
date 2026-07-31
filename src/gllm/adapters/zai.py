@@ -26,7 +26,6 @@ from openai import OpenAI
 
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
-from ..reasoning import zai_effort
 from ..usage import from_openai_chat
 from ._capabilities import (
     glm_supports_reasoning_effort,
@@ -105,7 +104,7 @@ class ZaiProvider(LLMProvider):
             # is a recognised SDK kwarg so it goes top-level.
             kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
             if glm_supports_reasoning_effort(request.model):
-                kwargs["reasoning_effort"] = zai_effort(request.reasoning)
+                kwargs["reasoning_effort"] = request.wire_effort
 
         resp = self.client.chat.completions.create(**kwargs)
 

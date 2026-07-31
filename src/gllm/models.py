@@ -33,20 +33,22 @@ from typing import NamedTuple
 class ModelCaps(NamedTuple):
     """What a model can be asked to do. Read by `adapters._capabilities`.
 
-    `reasoning_efforts` doubles as the reasoning-support flag: an empty tuple
-    means "no reasoning control at all", and a non-empty one is the exact set of
-    `--reasoning` levels the model accepts. `thinking_dialect` selects the wire
-    translation in `gllm.reasoning`.
+    `native_efforts` is the model's OWN effort vocabulary, ordered cheapest
+    first — NOT gllm's four rungs. gllm normalises its ladder onto it via
+    `reasoning.resolve_effort`, so `xhigh` always resolves to `native_efforts[-1]`
+    whatever that provider happens to call it. An empty tuple means "no effort
+    knob at all" and is the reasoning-support flag. `thinking_dialect` selects
+    the wire shaping in `gllm.reasoning`.
     """
 
     # 'responses' | 'chat' — which OpenAI API surface. None for non-OpenAI-family
     # providers (anthropic, gemini, zai, and the openai_compat hosts, which all
     # speak exactly one surface).
     api_surface: str | None = None
-    reasoning_efforts: tuple[str, ...] = ()
+    native_efforts: tuple[str, ...] = ()
     # 'anthropic_adaptive' | 'anthropic_budget' | 'gemini_budget' |
-    # 'openai_effort' | 'zai_effort' | 'zai_thinking' | 'compat_effort' |
-    # 'compat_thinking_flag'
+    # 'openai_effort' | 'zai_effort' | 'zai_thinking' | 'deepseek_effort' |
+    # 'compat_effort' | 'compat_thinking_flag'
     thinking_dialect: str | None = None
     supports_vision: bool = False
     supports_pdf: bool = False
@@ -76,7 +78,7 @@ class ModelSpec(NamedTuple):
 # thinking.type=adaptive and reject enabled+budget_tokens; 4.5 and older are the
 # reverse. Effort vocabulary per platform.claude.com/docs/en/build_with_claude/effort.
 _CLAUDE_ADAPTIVE_XHIGH = ModelCaps(
-    reasoning_efforts=("low", "medium", "high", "xhigh", "max"),
+    native_efforts=("low", "medium", "high", "xhigh", "max"),
     thinking_dialect="anthropic_adaptive",
     supports_vision=True,
     supports_pdf=True,
@@ -84,34 +86,34 @@ _CLAUDE_ADAPTIVE_XHIGH = ModelCaps(
 )
 # 4.6 / Sonnet 4.6: adaptive and `max`, but no `xhigh` rung.
 _CLAUDE_ADAPTIVE = _CLAUDE_ADAPTIVE_XHIGH._replace(
-    reasoning_efforts=("low", "medium", "high", "max")
+    native_efforts=("low", "medium", "high", "max")
 )
 _CLAUDE_BUDGET = _CLAUDE_ADAPTIVE_XHIGH._replace(
-    reasoning_efforts=("low", "medium", "high", "xhigh"),
+    native_efforts=("low", "medium", "high", "xhigh"),
     thinking_dialect="anthropic_budget",
 )
 
 # --- OpenAI. PDF input is `input_file`, which exists only on the Responses API.
 _GPT5_MAX = ModelCaps(
     api_surface="responses",
-    reasoning_efforts=("low", "medium", "high", "xhigh", "max"),
+    native_efforts=("none", "low", "medium", "high", "xhigh", "max"),
     thinking_dialect="openai_effort",
     supports_vision=True,
     supports_pdf=True,
     supports_strict_schema=True,
 )
-_GPT5 = _GPT5_MAX._replace(reasoning_efforts=("low", "medium", "high", "xhigh"))
-_O_SERIES = _GPT5_MAX._replace(reasoning_efforts=("low", "medium", "high"))
+_GPT5 = _GPT5_MAX._replace(native_efforts=("low", "medium", "high", "xhigh"))
+_O_SERIES = _GPT5_MAX._replace(native_efforts=("low", "medium", "high"))
 # gpt-*-chat-latest are the non-reasoning chat tunings of the gpt-5 line: still
 # Responses, but no effort knob.
-_GPT5_CHAT = _GPT5_MAX._replace(reasoning_efforts=(), thinking_dialect=None)
+_GPT5_CHAT = _GPT5_MAX._replace(native_efforts=(), thinking_dialect=None)
 _GPT4_CHAT = ModelCaps(
     api_surface="chat", supports_vision=True, supports_strict_schema=True
 )
 
 # --- Gemini. Thinking is a budget int; -1 = dynamic, which we map to xhigh.
 _GEMINI = ModelCaps(
-    reasoning_efforts=("low", "medium", "high", "xhigh"),
+    native_efforts=("low", "medium", "high", "xhigh"),
     thinking_dialect="gemini_budget",
     supports_vision=True,
     supports_pdf=True,
@@ -137,7 +139,7 @@ _GEMINI = ModelCaps(
 # different questions, and only the second one belongs in reasoning_efforts.
 _GROK = ModelCaps(
     api_surface="responses",
-    reasoning_efforts=("low", "medium", "high", "xhigh"),
+    native_efforts=("low", "medium", "high", "xhigh"),
     thinking_dialect="openai_effort",
     supports_vision=True,
     supports_strict_schema=True,
@@ -145,24 +147,30 @@ _GROK = ModelCaps(
 # Multi-agent grades AGENT COUNT (4 vs 16) rather than depth, and takes the
 # whole ladder.
 _GROK_MULTI_AGENT = _GROK._replace(
-    reasoning_efforts=("low", "medium", "high", "xhigh", "max")
+    native_efforts=("low", "medium", "high", "xhigh", "max")
 )
 # Reasons, but rejects `reasoning_effort` outright.
-_GROK_NO_EFFORT = _GROK._replace(reasoning_efforts=(), thinking_dialect=None)
+_GROK_NO_EFFORT = _GROK._replace(native_efforts=(), thinking_dialect=None)
 
-# --- DeepSeek. Reasons by default but exposes NO effort knob, and has only
-# response_format=json_object (no schema enforcement). Nothing to gate on.
-_DEEPSEEK = ModelCaps()
+# --- DeepSeek V4. Has BOTH a thinking toggle
+# (`extra_body={"thinking": {"type": "enabled"|"disabled"}}`, default enabled)
+# and an effort control (`reasoning_effort`), which publishes only high|max and
+# collapses low/medium->high, xhigh->max server-side. Verified live 2026-07-29.
+# Still json_object only, so no schema enforcement, and no image/document input.
+_DEEPSEEK = ModelCaps(
+    native_efforts=("high", "max"),
+    thinking_dialect="deepseek_effort",
+)
 
 # --- Z.AI / GLM. Capabilities are split across model FAMILIES rather than
 # gated per call: vision is a separate model line, and `reasoning_effort` is
 # honoured only from glm-5.2 on (below that, thinking is a binary on/off).
 _GLM_EFFORT = ModelCaps(
-    reasoning_efforts=("low", "medium", "high", "xhigh", "max"),
+    native_efforts=("high", "max"),
     thinking_dialect="zai_effort",
 )
 _GLM_THINK = ModelCaps(
-    reasoning_efforts=("low", "medium", "high", "xhigh"),
+    native_efforts=("high",),
     thinking_dialect="zai_thinking",
 )
 _GLM_NO_THINK = ModelCaps()
@@ -174,11 +182,11 @@ _GLM_VISION_NO_THINK = ModelCaps(supports_vision=True)
 # enforcement, no document input. Groq takes a bare `reasoning_effort`; Regolo
 # needs a top-level `thinking` flag alongside it.
 _GROQ_EFFORT = ModelCaps(
-    reasoning_efforts=("low", "medium", "high"), thinking_dialect="compat_effort"
+    native_efforts=("low", "medium", "high"), thinking_dialect="compat_effort"
 )
 _GROQ_PLAIN = ModelCaps()
 _REGOLO_THINK = ModelCaps(
-    reasoning_efforts=("low", "medium", "high"),
+    native_efforts=("low", "medium", "high"),
     thinking_dialect="compat_thinking_flag",
 )
 _REGOLO_PLAIN = ModelCaps()
@@ -399,7 +407,9 @@ MODELS: dict[str, ModelSpec] = {
         "grok-4.5", "grok", 500_000, _GROK, alt_model="grok-4.3"
     ),
     "grok-4.3": ModelSpec(
-        "grok-4.3", "grok", 1_000_000, _GROK, alt_model="grok-4.5"
+        "grok-4.3", "grok", 1_000_000,
+        _GROK._replace(native_efforts=("none", "low", "medium", "high", "xhigh")),
+        alt_model="grok-4.5",
     ),
     "grok-4.20-0309-reasoning": ModelSpec(
         "grok-4.20-0309-reasoning", "grok", 1_000_000, _GROK_NO_EFFORT,
@@ -624,7 +634,7 @@ _ANTHROPIC_ADAPTIVE_MARKERS = ("4-6", "4-7", "4-8", "fable", "opus-5", "sonnet-5
 
 # The full ladder. An unknown model is granted every rung so gllm never blocks a
 # real capability it hasn't been told about — the API is the one that 400s.
-_ALL_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+_ALL_EFFORTS = ("low", "medium", "high", "xhigh")
 
 
 def _legacy_use_responses_api(model: str) -> bool:
@@ -658,7 +668,7 @@ def _legacy_caps(provider: str, model: str) -> ModelCaps:
     """Guessed capabilities for a model with no registry row."""
     if provider in ("anthropic", "azure_anthropic"):
         return ModelCaps(
-            reasoning_efforts=_ALL_EFFORTS,
+            native_efforts=_ALL_EFFORTS,
             thinking_dialect=_legacy_anthropic_dialect(model),
             supports_vision=True,
             supports_pdf=True,
@@ -666,7 +676,7 @@ def _legacy_caps(provider: str, model: str) -> ModelCaps:
         )
     if provider == "gemini":
         return ModelCaps(
-            reasoning_efforts=_ALL_EFFORTS,
+            native_efforts=_ALL_EFFORTS,
             thinking_dialect="gemini_budget",
             supports_vision=True,
             supports_pdf=True,
@@ -676,7 +686,7 @@ def _legacy_caps(provider: str, model: str) -> ModelCaps:
         responses = _legacy_use_responses_api(model)
         return ModelCaps(
             api_surface="responses" if responses else "chat",
-            reasoning_efforts=_ALL_EFFORTS if responses else (),
+            native_efforts=_ALL_EFFORTS if responses else (),
             thinking_dialect="openai_effort" if responses else None,
             supports_vision=True,
             # PDF is `input_file`, Responses-only — and xAI has no equivalent.
@@ -689,18 +699,22 @@ def _legacy_caps(provider: str, model: str) -> ModelCaps:
             return ModelCaps(supports_vision=vision)
         dialect = "zai_effort" if _legacy_glm_effort(model) else "zai_thinking"
         return ModelCaps(
-            reasoning_efforts=_ALL_EFFORTS,
+            native_efforts=_ALL_EFFORTS,
             thinking_dialect=dialect,
             supports_vision=vision,
         )
     if provider in ("groq", "regolo"):
         return ModelCaps(
-            reasoning_efforts=("low", "medium", "high"),
+            native_efforts=("low", "medium", "high"),
             thinking_dialect=(
                 "compat_thinking_flag" if provider == "regolo" else "compat_effort"
             ),
         )
-    # deepseek and anything genuinely unknown: no control surface we can assume.
+    if provider == "deepseek":
+        return ModelCaps(
+            native_efforts=_ALL_EFFORTS, thinking_dialect="deepseek_effort"
+        )
+    # Anything genuinely unknown: no control surface we can assume.
     return ModelCaps()
 
 

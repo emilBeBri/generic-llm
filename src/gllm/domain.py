@@ -48,9 +48,14 @@ class Request:
     # native attachment API; providers without one raise on non-empty.
     attachments: tuple[Attachment, ...] = ()
     # Abstract reasoning-effort level: one of reasoning.LEVELS (low/medium/high/
-    # xhigh) or None (hands-off — no reasoning param is sent). Each adapter
-    # translates it to its provider-native shape; see gllm.reasoning.
+    # xhigh) or None (hands-off — no reasoning param is sent). This is the rung
+    # the USER asked for, kept for --usage reporting.
     reasoning: str | None = None
+    # The provider's own effort value that `reasoning` resolved to, e.g. "max"
+    # on DeepSeek for `-r xhigh`. Resolved once in the CLI so every adapter
+    # sends the same thing and the translation notice is printed in one place.
+    # Empty when `reasoning` is None.
+    wire_effort: str = ""
 
 
 @dataclass

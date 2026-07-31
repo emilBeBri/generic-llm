@@ -55,23 +55,21 @@ def supports_pdf(provider: str, model: str) -> bool:
     return caps_for(model, provider).supports_pdf
 
 
-def supports_reasoning(provider: str, model: str, level: str | None = None) -> bool:
-    """Can this model honour a `--reasoning` level?
+def supports_reasoning(provider: str, model: str) -> bool:
+    """Does this model have an effort knob at all?
 
-    With no `level`, answers the old question ("does it reason at all?"). With
-    one, answers the sharper question the effort ladder now needs: gpt-5.1 has
-    reasoning but no `max` rung, grok tops out at `high`, and DeepSeek reasons
-    by default while exposing no knob at all.
+    One question, not two: gllm's four rungs ALWAYS map onto a non-empty
+    vocabulary via `reasoning.resolve_effort`, so there is no such thing as a
+    level a reasoning-capable model cannot honour. The only refusal left is
+    "this model has no knob" — DeepSeek's `grok-build-0.1`-shaped case, where
+    the model reasons but cannot be graded.
     """
-    efforts = caps_for(model, provider).reasoning_efforts
-    if not efforts:
-        return False
-    return True if level is None else level in efforts
+    return bool(caps_for(model, provider).native_efforts)
 
 
-def reasoning_levels(provider: str, model: str) -> tuple[str, ...]:
-    """The exact `--reasoning` values this model accepts (for error messages)."""
-    return caps_for(model, provider).reasoning_efforts
+def native_efforts(provider: str, model: str) -> tuple[str, ...]:
+    """The model's own effort vocabulary, cheapest first (for the -r notice)."""
+    return caps_for(model, provider).native_efforts
 
 
 def thinking_dialect(provider: str, model: str) -> str | None:

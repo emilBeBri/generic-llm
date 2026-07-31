@@ -89,7 +89,7 @@ class AnthropicProvider(LLMProvider):
             # Dialect from the model's registry row: 4.6+ and the 5 family
             # REQUIRE thinking.type=adaptive and reject enabled+budget_tokens.
             r = anthropic_thinking(
-                request.reasoning,
+                request.wire_effort,
                 request.model,
                 thinking_dialect(self.name, request.model),
             )

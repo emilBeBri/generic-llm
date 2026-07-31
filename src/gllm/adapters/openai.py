@@ -23,7 +23,6 @@ from openai import OpenAI
 
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
-from ..reasoning import openai_effort
 from ..usage import from_openai_chat, from_openai_responses
 from ._capabilities import is_text_generation_model, use_responses_api
 
@@ -141,7 +140,7 @@ class OpenAIProvider(LLMProvider):
         if request.temperature is not None and not reasoning_on:
             kwargs["temperature"] = request.temperature
         if reasoning_on:
-            kwargs["reasoning"] = {"effort": openai_effort(request.reasoning)}
+            kwargs["reasoning"] = {"effort": request.wire_effort}
 
         if request.schema is not None:
             kwargs["text"] = {

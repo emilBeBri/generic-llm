@@ -29,7 +29,7 @@ from .adapters._capabilities import (
     supports_reasoning,
     supports_strict_schema,
 )
-from .adapters._capabilities import reasoning_levels
+from .adapters._capabilities import native_efforts
 from .config import work_env
 from .domain import Attachment, Request
 from .models import wire_id_for
@@ -343,6 +343,15 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "-q",
+        "--quiet-effort",
+        action="store_true",
+        help=(
+            "Suppress the stderr notice printed when --reasoning is remapped "
+            "onto a model's own effort vocabulary (e.g. xhigh -> 'max')."
+        ),
+    )
+    p.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -400,39 +409,40 @@ def main(argv: list[str] | None = None) -> int:
     args.model = effective_model(args.model, work_env())
     provider_name = provider_for(args.model)
 
-    # Reasoning capability gate. An explicit --reasoning a model can't honour is
-    # a hard error (fail loud). But an ambient $DEFAULT_EFFORT must not block
-    # non-reasoning models like gpt-4.1 — drop it silently and carry on. Done
-    # before the status print so the printed model:reasoning line is truthful.
-    #
-    # Two distinct refusals now that the ladder has a `max` rung: the model has
-    # no reasoning control at all, or it has one but not at this level (grok
-    # tops out at `high`, gpt-5.1 at `xhigh`).
-    if args.reasoning and not supports_reasoning(
-        provider_name, args.model, args.reasoning
-    ):
-        accepted = reasoning_levels(provider_name, args.model)
+    # Reasoning capability gate — ONE question: does this model have an effort
+    # knob at all? gllm's four rungs always resolve onto a non-empty vocabulary
+    # (reasoning.resolve_effort), so "a level this model can't take" no longer
+    # exists. An explicit --reasoning on a knobless model is a hard error (fail
+    # loud); an ambient $DEFAULT_EFFORT is dropped instead, so a global
+    # DEFAULT_EFFORT=low doesn't break every pipe to gpt-4.1 or grok-build-0.1.
+    # Done before the status print so the printed model:reasoning line is true.
+    wire_effort = ""
+    if args.reasoning and not supports_reasoning(provider_name, args.model):
         if reasoning_was_defaulted:
-            # Ambient default: never block. Clamp to the model's top rung if it
-            # reasons at all, otherwise drop the level entirely.
-            args.reasoning = (
-                max(accepted, key=reasoning_mod.LEVELS.index) if accepted else None
-            )
-        elif accepted:
-            print(
-                f"gllm: {provider_name} model {args.model!r} does not accept "
-                f"--reasoning {args.reasoning}; it accepts {', '.join(accepted)}.",
-                file=sys.stderr,
-            )
-            return 2
+            args.reasoning = None
         else:
             print(
                 f"gllm: {provider_name} model {args.model!r} has no reasoning "
                 f"control; drop --reasoning or use a reasoning-capable model "
-                f"(gpt-5/o-series, claude-*, gemini-*, grok-*).",
+                f"(gpt-5/o-series, claude-*, gemini-*, grok-4.3/4.5, deepseek-*).",
                 file=sys.stderr,
             )
             return 2
+
+    if args.reasoning:
+        # Normalise the rung onto this model's OWN vocabulary. `xhigh` means
+        # "the most this model has", so it can land on a differently-named value
+        # (DeepSeek and GLM call their top rung `max`). Announce it when that
+        # happens — a level silently meaning something else is the sort of quiet
+        # degradation gllm refuses everywhere else. Silent on a pass-through.
+        native = native_efforts(provider_name, args.model)
+        wire_effort = reasoning_mod.resolve_effort(args.reasoning, native)
+        if wire_effort != args.reasoning and not args.quiet_effort:
+            print(
+                f"gllm: -r {args.reasoning} -> {wire_effort!r} "
+                f"({args.model} offers: {', '.join(native)})",
+                file=sys.stderr,
+            )
 
     if model_was_defaulted:
         print(
@@ -493,6 +503,7 @@ def main(argv: list[str] | None = None) -> int:
         json_mode=args.json or schema is not None,
         attachments=attachments,
         reasoning=args.reasoning,
+        wire_effort=wire_effort,
     )
 
     # Strict-or-fail: --schema promises enforced structured output. Refuse it on

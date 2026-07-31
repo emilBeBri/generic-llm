@@ -36,7 +36,6 @@ from ..domain import Attachment, Request, Response
 from ..models import caps_for
 from ..ports import LLMProvider
 from ..providers import ProviderSpec
-from ..reasoning import compat_effort
 from ..usage import from_openai_chat
 from ._capabilities import is_text_generation_model
 
@@ -102,7 +101,7 @@ class OpenAICompatProvider(LLMProvider):
                     f"{self.name} model {request.model!r} has no reasoning "
                     f"control; drop --reasoning."
                 )
-            kwargs["reasoning_effort"] = compat_effort(request.reasoning)
+            kwargs["reasoning_effort"] = request.wire_effort
             if caps.thinking_dialect == "compat_thinking_flag":
                 extra_body["thinking"] = True
         if extra_body:

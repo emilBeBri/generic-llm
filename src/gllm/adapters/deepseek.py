@@ -6,7 +6,15 @@ so we drive it with the `openai` SDK pointed at a different base_url. Models:
 
 Thinking: the v4 models reason by default and emit a `reasoning_content`
 field alongside `content`. gllm is one-shot and prints only the final text,
-so we discard reasoning and don't touch the thinking config (API default).
+so the reasoning trace is discarded.
+
+`--reasoning` IS honoured here. gllm long claimed "DeepSeek has no control
+surface" and refused `-r` outright — wrong since V4, and verified wrong live on
+2026-07-29 (effort=high gave ~72 chars of reasoning_content, max ~200, and
+thinking:disabled 0). V4 exposes a toggle
+(`extra_body={"thinking": {"type": "enabled"}}`, default enabled) and an effort
+control publishing `high|max`; the CLI resolves gllm's rung onto those two
+before it reaches us, so `-r xhigh` arrives as `max`.
 
 Structured output: DeepSeek has no native json_schema/strict mode — only
 `response_format={"type": "json_object"}`. `--json` flips that on (best-effort
@@ -67,15 +75,31 @@ class DeepSeekProvider(LLMProvider):
             messages.append({"role": "system", "content": request.system})
         messages.append({"role": "user", "content": request.prompt})
 
+        reasoning_on = request.reasoning is not None
+        # Thinking tokens count against the output budget; raise the floor so the
+        # visible answer isn't starved (mirrors the zai/gemini/openai adapters).
+        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
+
         kwargs: dict = {
             "model": request.wire_model or request.model,
             "messages": messages,
-            "max_tokens": request.max_tokens,
+            "max_tokens": max_out,
         }
-        if request.temperature is not None:
+        # Thinking mode silently IGNORES temperature/top_p/penalties rather than
+        # erroring, so only send one when thinking is off — otherwise the value
+        # looks honoured and isn't.
+        if request.temperature is not None and not reasoning_on:
             kwargs["temperature"] = request.temperature
         if request.json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+
+        if reasoning_on:
+            # `thinking` is a non-OpenAI param -> extra_body; `reasoning_effort`
+            # is a recognised SDK kwarg so it goes top-level. The value is
+            # already resolved to DeepSeek's own vocabulary (high|max) by the
+            # CLI — see reasoning.resolve_effort.
+            kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+            kwargs["reasoning_effort"] = request.wire_effort
 
         resp = self.client.chat.completions.create(**kwargs)
 

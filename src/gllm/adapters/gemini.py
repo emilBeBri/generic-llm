@@ -72,7 +72,7 @@ class GeminiProvider(LLMProvider):
 
         if reasoning_on:
             config_args["thinking_config"] = types.ThinkingConfig(
-                thinking_budget=gemini_thinking_budget(request.reasoning, request.model)
+                thinking_budget=gemini_thinking_budget(request.wire_effort)
             )
 
         config = types.GenerateContentConfig(**config_args)
