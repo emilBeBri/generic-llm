@@ -153,38 +153,43 @@ gllm -m claude-opus-4-8-dev "..."      # -> azure_anthropic (explicit -dev, any 
 
 ## Reasoning effort
 
-`-r/--reasoning low|medium|high|xhigh|max` is one abstract knob that each provider
+`-r/--reasoning low|medium|high|xhigh` is one abstract knob that each provider
 translates to its native control. If omitted, `$DEFAULT_EFFORT` is used when
 set. If neither is set, reasoning is **hands-off** — no reasoning param is sent,
 so the provider's own default applies (no behaviour change).
 
-Not every model has every rung, and the registry knows which. `max` exists on
-Claude Fable 5 / Opus 5 / 4.8 / 4.7 / 4.6 / Sonnet 5 / 4.6, on GPT-5.6 and on
-GLM; grok tops out at `high`.
+**Four rungs, always — that is the point.** Providers share almost no
+vocabulary (DeepSeek publishes `{high, max}`, gpt-5.6 `{none..max}`, Gemini
+`{minimal..high}`), so gllm normalises rather than exposing each one's dialect.
+A script written against `-r high` keeps working when you change the model.
 
-On a model with **no** reasoning control (gpt-4o, gpt-4.1, deepseek-v4), an
-*explicit* `-r` fails loudly with exit 2 rather than silently ignoring you. On a
-model that reasons but not at the rung you asked for, it also exits 2 — and
-names the rungs it does take:
+- `xhigh` always means **the most this model has**, whatever it is called there;
+- every other rung keeps its own name where the provider has it, and clamps to
+  the nearest where it doesn't.
+
+So `-r low` is always the cheapest setting available — never silently upgraded.
+
+When a rung is remapped, gllm says so on stderr (silent on a pass-through,
+suppressed with `-q`):
 
 ```
-gllm: grok model 'grok-4.3' does not accept --reasoning xhigh;
-it accepts low, medium, high.
+gllm: -r xhigh -> 'max' (deepseek-v4-pro offers: high, max)
 ```
 
-A value inherited from `$DEFAULT_EFFORT` is an ambient default, not a request,
-so it is never fatal: it is clamped down to the model's top rung, or dropped
-entirely on a model that can't reason. That lets you keep a global
-`DEFAULT_EFFORT=max` and still pipe to anything.
+On a model with **no** effort knob at all (gpt-4o, grok-build-0.1), an
+*explicit* `-r` fails loudly with exit 2. A value inherited from
+`$DEFAULT_EFFORT` is an ambient default, not a request, so it is dropped there
+instead — you can keep a global `DEFAULT_EFFORT=low` and still pipe to
+anything.
 
 ```sh
-gllm -r max   -m claude-opus-5 "prove it step by step"
-gllm -r max   -m gpt-5.6 "tricky logic puzzle"
-gllm -r high  -m grok-4.3 "..."
+gllm -r xhigh -m claude-opus-5 "prove it step by step"   # -> effort 'max'
+gllm -r xhigh -m gpt-5.6 "tricky logic puzzle"           # -> effort 'max'
+gllm -r xhigh -m deepseek-v4-pro "..."                   # -> effort 'max'
 gllm -r low   -m gemini-3.5-flash "quick sanity check"
 ```
 
-| Provider | Native control | low → top rung |
+| Provider | Native control | how the rungs land |
 |---|---|---|
 | OpenAI / Grok / Azure OpenAI (Responses) | `reasoning.effort` | the level, verbatim |
 | Anthropic adaptive line — 4.6+ and all of Claude 5 (direct + Azure) | `thinking.adaptive` + `output_config.effort` | the level, verbatim |
@@ -193,7 +198,8 @@ gllm -r low   -m gemini-3.5-flash "quick sanity check"
 | Gemini | `thinking_budget` | 4k / 8k / 16k / dynamic (`-1`) |
 | Z.AI GLM-5.2 | `thinking.enabled` + `reasoning_effort` | the level, verbatim (`low`/`medium`→high, `xhigh`→max internally) |
 | Z.AI GLM 4.5–5.1 | `thinking.enabled` (binary) | thinking on; effort ignored |
-| OpenAI Chat (gpt-4o), DeepSeek, GLM (glm-ocr / glm-4-32b) | none | unsupported → exit 2 |
+| DeepSeek | `thinking.enabled` + `reasoning_effort` | only {high, max}; xhigh → max |
+| OpenAI Chat (gpt-4o), grok-build-0.1, grok-4.20-0309-*, glm-ocr / glm-4-32b | none | no knob → exit 2 |
 
 For Anthropic/OpenAI, setting a level also bumps `max_tokens` so reasoning
 doesn't starve the answer, and drops `temperature` (reasoning models reject a
