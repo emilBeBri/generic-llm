@@ -255,3 +255,24 @@ def test_bundled_price_overrides_name_real_models():
 )
 def test_claude_thinking_dialects(model, expected):
     assert MODELS[model].caps.thinking_dialect == expected
+
+
+def test_bundled_price_overrides_do_not_shadow_the_book():
+    """data/prices.json is the GAP layer: a row the tracker book also covers is
+    a stale copy waiting to diverge. Mark deliberate disagreements with
+    "override": true."""
+    import gllm.pricing as pricing
+    from llm_price_tracker.book import get_entry, load_book
+
+    book = load_book()
+    data = pricing._read_override_file(pricing._bundled_overrides_path())
+    shadows = []
+    for key, row in data.items():
+        if key.startswith("_") or not isinstance(row, dict):
+            continue
+        if row.get("override") is True:
+            continue
+        entry = get_entry(key, book)
+        if entry is not None and entry.standard is not None:
+            shadows.append(key)
+    assert shadows == [], f"book-covered rows in data/prices.json: {shadows}"

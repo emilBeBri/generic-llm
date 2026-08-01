@@ -363,8 +363,8 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Emit one machine-readable JSON usage record to stderr, prefixed "
             "'gllm-usage ' — provider, model, reasoning, input/output/cache/"
-            "reasoning tokens, derived cost_usd (from the llm-prices.com feed, "
-            "24h-cached), plus the provider's verbatim usage in usage_raw. "
+            "reasoning tokens, derived cost_usd (from the llm-price-tracker "
+            "book, offline), plus the provider's verbatim usage in usage_raw. "
             "stdout stays the model text only."
         ),
     )
@@ -566,8 +566,8 @@ def main(argv: list[str] | None = None) -> int:
         # Machine-readable sibling of --verbose. One JSON object on its own line,
         # prefixed so a caller can grep it out of mixed stderr. usage_raw carries
         # the provider's own numbers for exact per-model cost accounting; cost_usd
-        # is derived from the llm-prices.com feed (priced_as names the matched
-        # entry, null when the feed has no price for this model — e.g. GLM).
+        # is derived from the llm-price-tracker book plus the local overrides
+        # (priced_as names the matched entry, null when neither prices the model).
         usage = {
             "input_tokens": response.input_tokens,
             "output_tokens": response.output_tokens,
@@ -575,8 +575,16 @@ def main(argv: list[str] | None = None) -> int:
             "cache_write_tokens": response.cache_write_tokens,
             "reasoning_tokens": response.reasoning_tokens,
         }
-        # Match on what answered, falling back to the requested name.
-        candidates = list(dict.fromkeys([response.model, request.model]))
+        # Match on what answered, falling back to the requested name, then the
+        # bare wire id — the book is vendor-id-keyed, and Response.model is the
+        # registry key on some adapters and the vendor's returned id on others.
+        candidates = [
+            c
+            for c in dict.fromkeys(
+                [response.model, request.model, request.wire_model]
+            )
+            if c
+        ]
         record = {
             "provider": response.provider,
             "model": response.model,

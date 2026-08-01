@@ -8,6 +8,7 @@ dependencies = [
     "anthropic>=0.76.0",
     "openai>=2.15.0",
     "google-genai>=1.59.0",
+    "llm-price-tracker",
 ]
 
 [project.scripts]
@@ -19,6 +20,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gllm"]
+
+[tool.uv.sources]
+llm-price-tracker = { path = "../llm-price-tracker", editable = true }
 
 [dependency-groups]
 dev = [

@@ -1,11 +1,11 @@
 {
-  "_comment": "Local LLM price overrides, USD per 1M tokens. Merged OVER the llm-prices.com feed (these WIN), for models the feed lacks (e.g. GLM/Zhipu) or mis-prices. Per-machine overrides go in ~/.config/gllm/prices.json (the overlay wins over this bundled file). An entry activates only once input AND output are numeric — null/omitted is a skipped stub, never a $0 price. input_cached is optional: the per-1M cached-read rate; null falls back to the input rate.",
+  "_comment": "Local LLM price overrides, USD per 1M tokens. Merged OVER the llm-price-tracker book (these WIN), for models the book cannot price: GLM/Zhipu, groq:/regolo: rentals, Azure -dev deployments, codex/chat aliases absent from vendor pricing pages. A row for a book-covered model is a stale-copy trap and fails a registry test unless it carries \"override\": true. Per-machine overrides go in ~/.config/gllm/prices.json (the overlay wins over this bundled file and may override anything). An entry activates only once input AND output are numeric — null/omitted is a skipped stub, never a $0 price. input_cached is optional: the per-1M cached-read rate; null falls back to the input rate.",
   "_example": {
     "input": 0.6,
     "output": 2.2,
     "input_cached": 0.11
   },
-  "_source": "Vendor pricing verified against ~/source-docs (Anthropic/OpenAI/Gemini/xAI/DeepSeek/Z.AI) and regolo.ai/pricing, 2026-07-29. Only models the llm-prices.com feed cannot price are listed here — the feed stays authoritative for everything it covers.",
+  "_source": "Gap rows verified against ~/source-docs and regolo.ai/pricing, 2026-07-29. Book-covered rows removed 2026-08-01 (mechanically: every key llm_price_tracker.get_entry resolves).",
   "claude-fable-5-dev": {
     "input": 10.0,
     "output": 50.0,
@@ -36,15 +36,6 @@
     "output": 60.0,
     "note": "Azure Foundry flat -dev pricing."
   },
-  "claude-opus-5": {
-    "input": 5.0,
-    "output": 25.0,
-    "input_cached": 0.5
-  },
-  "claude-sonnet-4-6": {
-    "input": 3.0,
-    "output": 15.0
-  },
   "codex-mini-latest": {
     "input": 1.5,
     "output": 6.0
@@ -56,21 +47,6 @@
   "gemini-3-flash-lite-preview": {
     "input": 0.5,
     "output": 3.0
-  },
-  "gemini-3.1-flash-lite": {
-    "input": 0.25,
-    "output": 1.5,
-    "input_cached": 0.025
-  },
-  "gemini-3.5-flash-lite": {
-    "input": 0.3,
-    "output": 2.5,
-    "input_cached": 0.03
-  },
-  "gemini-3.6-flash": {
-    "input": 1.5,
-    "output": 7.5,
-    "input_cached": 0.15
   },
   "glm-4-32b-0414-128k": {
     "input": 0.1,
@@ -287,11 +263,6 @@
   "groq:qwen/qwen3-32b": {
     "input": 0.29,
     "output": 0.59
-  },
-  "o1": {
-    "input": 15.0,
-    "output": 60.0,
-    "input_cached": 7.5
   },
   "o3-dev": {
     "input": 15.0,

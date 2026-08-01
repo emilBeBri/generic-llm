@@ -126,9 +126,11 @@ def _wire(monkeypatch):
     monkeypatch.setattr(cli, "_load_user_env_file", lambda *_: None)
     monkeypatch.setattr(cli, "_build_provider", lambda _name: _FakeProvider())
     monkeypatch.setattr(cli, "_read_stdin_if_piped", lambda: "hej")
-    # Keep these usage tests off the network / real price files (pricing has its
-    # own suite); the assertions here are about token fields, not cost.
-    monkeypatch.setattr(pricing, "load_prices", lambda *a, **k: ([], "none", None))
+    # Keep these usage tests off the real price book / override files (pricing
+    # has its own suite); the assertions here are about token fields, not cost.
+    from llm_price_tracker.models import PriceBook
+
+    monkeypatch.setattr(pricing, "_load_book", lambda: PriceBook(updated_at="2026-01-01"))
     monkeypatch.setattr(pricing, "load_overrides", lambda: {})
     monkeypatch.delenv("DEFAULT_MODEL", raising=False)
     monkeypatch.delenv("DEFAULT_EFFORT", raising=False)

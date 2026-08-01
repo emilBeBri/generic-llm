@@ -49,27 +49,31 @@ per-model billing, use **`usage_raw`** — the provider's own numbers, untouched
 (Earlier this said cost belongs downstream — reversed on request 2026-06-28:
 gllm owns the token counts, so it owns the $-conversion too.)
 
-`--usage` adds `cost_usd`, `priced_as` (the feed entry matched), and
-`price_source` to the record. Source is the **llm-prices.com** feed
-(`https://www.llm-prices.com/current-v1.json`, Simon Willison's project — the
-same one bebri-chat uses), fetched with stdlib urllib (no new dep) and cached to
-`~/.cache/gllm/llm-prices-v1.json` for 24h with stale fallback. Prices are USD
-per 1M tokens; `input_cached` may be null.
+`--usage` adds `cost_usd`, `priced_as` (the entry matched), and `price_source`
+(`override` | `book` | `none`) to the record. Since 2026-08-01 the source is
+the **llm-price-tracker book** (editable path dependency on
+`~/prog/prj/llm-price-tracker`): a committed, daily cross-checked store of
+first-party vendor prices, keyed by vendor id, USD per 1M tokens. Its read
+path is pure/offline — the old llm-prices.com runtime fetch (24h cache, 15s
+worst-case offline stall) is DELETED, and `~/.cache/gllm/llm-prices-v1.json`
+is inert. The CLI's match candidates are `[response.model, request.model,
+request.wire_model]` — the book is vendor-id-keyed and `Response.model` is the
+registry key on some adapters, the vendor's returned id on others.
 
-Three separable pieces (the matching/cost halves are pure + unit-tested offline):
-- `load_prices()` — fetch + 24h cache + stale fallback.
-- `match_price(model, prices)` — exact id → dot/dash-normalised (`gemini-3.1-...`
-  ↔ feed `gemini-3-1-...`) → unique token-set (`claude-haiku-4-5` ↔ feed
-  `claude-4.5-haiku`). Ambiguous token-set → no match (null, never a wrong price).
+Three separable pieces (the cost half is pure + unit-tested offline):
+- `_book_entry(model)` — exact id, then the tracker's UNIQUE dot/dash-folded
+  match (`claude-haiku-4-5` ↔ book page-slug `claude-haiku-4.5`); `_load_book`
+  is the monkeypatch seam. Ambiguous fold → no match (null, never a wrong price).
 - `compute_cost(provider, entry, usage)` — **provider-aware**, because the token
   conventions differ: Anthropic `input_tokens` EXCLUDES cache (so don't subtract;
-  writes ≈1.25× input); Gemini bills thoughts ON TOP of output (add
+  writes bill at the book's published `cache_write` rate, ≈1.25× input only as
+  the backstop for overrides); Gemini bills thoughts ON TOP of output (add
   `reasoning_tokens`); OpenAI-family/DeepSeek/GLM fold cache into prompt and
   reasoning into output (subtract cache_read, don't add reasoning).
 
-## Local overrides fill feed gaps (GLM) and fix mispricings
+## Local overrides fill book gaps (GLM) and fix mispricings
 
-**GLM/Zhipu is absent from the llm-prices feed** (so the feed alone gives
+**GLM/Zhipu has no tracker source yet** (so the book alone gives
 `glm-5.2` → null cost). Closed with a two-tier override (mirrors the
 schema/instruction layout, [[CONVENTIONS-schemas-and-instructions]]):
 - bundled `<repo>/data/prices.json` (version-controlled, syncs across machines)

@@ -1,39 +1,29 @@
-"""Per-call USD cost from the llm-prices.com feed.
+"""Per-call USD cost from the llm-price-tracker book.
 
-Prices come from Simon Willison's llm-prices project, the aggregated feed served
-at https://www.llm-prices.com/current-v1.json (the same source bebri-chat uses).
-Shape:
+Prices come from the llm-price-tracker package (an editable path dependency on
+~/prog/prj/llm-price-tracker): a committed, daily cross-checked book of
+first-party vendor prices, keyed by vendor model id, USD per 1M tokens. Its
+read path is pure and offline — no network, ever, so a cold-cache offline run
+can no longer stall 15s the way the old llm-prices.com feed fetch could. The
+book is as fresh as the sibling checkout; its systemd timer raises an alarm
+when a vendor page moves.
 
-    {"updated_at": "YYYY-MM-DD",
-     "prices": [{"id", "vendor", "name", "input", "output", "input_cached"}, ...]}
-
-All prices are USD per 1 million tokens; `input_cached` may be null. We fetch
-live (stdlib urllib — no extra dependency) and cache to disk for 24h, falling
-back to a stale cache when the network is down. gllm already owns the token
-counts (gllm.usage), so it converts to dollars here rather than pushing the job
-onto every caller.
+gllm already owns the token counts (gllm.usage), so it converts to dollars
+here rather than pushing the job onto every caller.
 
 Three pieces, separable for testing:
-- load_prices()  — fetch + 24h cache + stale fallback. Touches the network.
-- match_price()  — pure: gllm model name -> feed entry (exact / dot-normalised /
-                   unique token-set, in that order).
-- compute_cost() — pure: provider-aware $ from a feed entry + token counts.
+- _book_entry()  — gllm model name -> book entry (exact, then the tracker's
+                   dot/dash-insensitive fallback). `_load_book` is the seam.
+- compute_cost() — pure: provider-aware $ from an entry + token counts.
+- load_overrides()/match_override() — the bundled + user-overlay gap layer.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import time
-import urllib.request
 from pathlib import Path
 from typing import Any
-
-FEED_URL = "https://www.llm-prices.com/current-v1.json"
-USER_AGENT = "gllm/llm-prices"
-TIMEOUT_S = 15
-MAX_RESPONSE_BYTES = 2_000_000
-CACHE_TTL_S = 24 * 60 * 60
 
 # Providers whose `input_tokens` EXCLUDES cached/again-billed tokens, and which
 # bill cache *writes* (Anthropic 5-min cache ≈ 1.25× base input). Everywhere
@@ -43,105 +33,43 @@ _ANTHROPIC_CACHE_WRITE_MULTIPLIER = 1.25
 
 
 # --------------------------------------------------------------------------- #
-# Data layer: fetch + cache + stale fallback (ported from bebri-chat).
+# Book layer: the tracker's committed price book (offline, pydantic-only).
 # --------------------------------------------------------------------------- #
-def _cache_path() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME", "").strip()
-    root = Path(base) if base else Path.home() / ".cache"
-    return root / "gllm" / "llm-prices-v1.json"
+def _load_book():
+    """Test seam: monkeypatch me with a hand-built PriceBook. Lazy import so
+    plain (non ``--usage``) runs never pay for pydantic."""
+    from llm_price_tracker import load_book
+
+    return load_book()
 
 
-def _read_cache() -> dict | None:
-    try:
-        return json.loads(_cache_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+def _book_entry(model: str) -> tuple[str, dict] | None:
+    """(book id, entry dict) for a model, or None.
+
+    The tracker's get_entry does exact-id first, then a UNIQUE dot/dash-folded
+    match (book Anthropic ids are page slugs like `claude-opus-4.6`; gllm keys
+    are wire-style `claude-opus-4-6`). Namespaced keys (`groq:`, `regolo:`)
+    can never resolve here — they are priced by the override layer.
+    """
+    if not model:
         return None
+    from llm_price_tracker.book import get_entry
 
-
-def _cache_age_s() -> float | None:
-    try:
-        return time.time() - _cache_path().stat().st_mtime
-    except OSError:
+    entry = get_entry(model.strip(), _load_book())
+    if entry is None or entry.standard is None:
         return None
+    p = entry.standard
+    return entry.id, {
+        "input": p.input,
+        "output": p.output,
+        "input_cached": p.cache_read,
+        "cache_write": p.cache_write,
+    }
 
 
-def _write_cache(payload: dict) -> None:
-    path = _cache_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload), encoding="utf-8")
-    except OSError:
-        pass  # a cache we can't write is a perf hit, not an error
-
-
-def _fetch_feed() -> dict:
-    req = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:  # noqa: S310 - fixed https URL
-        data = r.read(MAX_RESPONSE_BYTES + 1)
-    if len(data) > MAX_RESPONSE_BYTES:
-        raise ValueError(f"feed exceeds {MAX_RESPONSE_BYTES} bytes")
-    payload = json.loads(data)
-    if not isinstance(payload, dict) or not isinstance(payload.get("prices"), list):
-        raise ValueError("unexpected feed shape")
-    return payload
-
-
-def load_prices(force_refresh: bool = False) -> tuple[list[dict], str, str | None]:
-    """Return (prices, source, error). source ∈ {cache, network, stale-cache, none}."""
-    age = _cache_age_s()
-    if not force_refresh and age is not None and age < CACHE_TTL_S:
-        cached = _read_cache()
-        if cached is not None:
-            return cached.get("prices", []), "cache", None
-    try:
-        payload = _fetch_feed()
-    except Exception as e:  # network/parse failures all degrade the same way
-        stale = _read_cache()
-        if stale is not None:
-            return stale.get("prices", []), "stale-cache", None
-        return [], "none", f"price feed unavailable: {e}"
-    _write_cache(payload)
-    return payload.get("prices", []), "network", None
-
-
-# --------------------------------------------------------------------------- #
-# Matching (pure): gllm model name -> feed entry.
-# --------------------------------------------------------------------------- #
 def _norm(s: str) -> str:
-    # Feed mixes separators: `gemini-3-1-pro-preview` vs gllm's `gemini-3.1-...`.
+    # Sources mix separators: `gemini-3-1-pro-preview` vs gllm's `gemini-3.1-...`.
     return s.strip().lower().replace(".", "-")
-
-
-def _token_set(s: str) -> frozenset[str]:
-    # Feed sometimes reorders name vs version: `claude-4.5-haiku` vs gllm's
-    # `claude-haiku-4-5`. A token set is order-insensitive.
-    return frozenset(t for t in _norm(s).split("-") if t)
-
-
-def match_price(model: str, prices: list[dict]) -> dict | None:
-    if not model or not prices:
-        return None
-    ml = model.strip().lower()
-    nm = _norm(model)
-    mt = _token_set(model)
-
-    by_id: dict[str, dict] = {}
-    by_norm: dict[str, dict] = {}
-    for p in prices:
-        pid = str(p.get("id", ""))
-        if not pid:
-            continue
-        by_id.setdefault(pid.lower(), p)
-        by_norm.setdefault(_norm(pid), p)
-
-    if ml in by_id:                       # 1. exact id
-        return by_id[ml]
-    if nm in by_norm:                     # 2. dot/dash-normalised
-        return by_norm[nm]
-    hits = [p for p in prices if _token_set(str(p.get("id", ""))) == mt]
-    if len(hits) == 1:                    # 3. unique token-set (ambiguous -> skip)
-        return hits[0]
-    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -172,8 +100,16 @@ def compute_cost(provider: str, entry: dict | None, usage: dict) -> float | None
     rt = usage.get("reasoning_tokens", 0) or 0
 
     if provider in _ANTHROPIC_PROVIDERS:
-        # input_tokens already excludes cache reads/writes; writes cost a premium.
-        input_cost = it * in_rate + cr * cached_rate + cw * _ANTHROPIC_CACHE_WRITE_MULTIPLIER * in_rate
+        # input_tokens already excludes cache reads/writes; writes cost a
+        # premium. The book carries the vendor's real cache-write rate; the
+        # 1.25x guess only backstops entries without one (overrides).
+        cache_write = entry.get("cache_write")
+        write_rate = (
+            _rate(cache_write)
+            if cache_write is not None
+            else _ANTHROPIC_CACHE_WRITE_MULTIPLIER * in_rate
+        )
+        input_cost = it * in_rate + cr * cached_rate + cw * write_rate
         output_cost = ot * out_rate
     elif provider == "gemini":
         # prompt_token_count includes cache; thoughts are billed ON TOP of output.
@@ -190,8 +126,11 @@ def compute_cost(provider: str, entry: dict | None, usage: dict) -> float | None
 
 # --------------------------------------------------------------------------- #
 # Local overrides: two-tier (bundled data/ + ~/.config/gllm/ overlay), matching
-# gllm's schema/instruction layout. Overrides WIN over the feed — they fill gaps
-# the feed lacks (GLM/Zhipu) and double as a manual fix for a mispriced model.
+# gllm's schema/instruction layout. Overrides WIN over the book. The bundled
+# file holds only gaps the book cannot price (GLM/Zhipu, groq:/regolo: rentals,
+# Azure -dev deployments) — a bundled row shadowing a book-covered model is the
+# stale-copy trap, and a registry test forbids it. The user overlay is the
+# deliberate escape hatch and may override anything.
 # --------------------------------------------------------------------------- #
 def _bundled_overrides_path() -> Path:
     # pricing.py is at <repo>/src/gllm/pricing.py -> parents[2] is the repo root.
@@ -247,9 +186,10 @@ def match_override(model: str, overrides: dict) -> tuple[str, dict] | None:
 
 
 def price_report(provider: str, models: list[str], usage: dict) -> dict:
-    """Convenience for the CLI: try local overrides first, then the feed; match
-    the first model name that hits; compute cost. Never raises — pricing must not
-    break the main output. Returns {cost_usd, priced_as, price_source}."""
+    """Convenience for the CLI: try local overrides first, then the price book;
+    match the first model name that hits; compute cost. Never raises — pricing
+    must not break the main output. Returns {cost_usd, priced_as, price_source}
+    with price_source in {override, book, none}."""
     try:
         overrides = load_overrides()
         for m in models:
@@ -261,16 +201,15 @@ def price_report(provider: str, models: list[str], usage: dict) -> dict:
                     "priced_as": key,
                     "price_source": "override",
                 }
-        prices, source, _ = load_prices()
-        entry = None
         for m in models:
-            entry = match_price(m, prices)
-            if entry:
-                break
-        return {
-            "cost_usd": compute_cost(provider, entry, usage) if entry else None,
-            "priced_as": entry.get("id") if entry else None,
-            "price_source": source,
-        }
+            book_hit = _book_entry(m)
+            if book_hit:
+                key, entry = book_hit
+                return {
+                    "cost_usd": compute_cost(provider, entry, usage),
+                    "priced_as": key,
+                    "price_source": "book",
+                }
+        return {"cost_usd": None, "priced_as": None, "price_source": "none"}
     except Exception:
         return {"cost_usd": None, "priced_as": None, "price_source": "none"}
