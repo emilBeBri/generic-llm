@@ -5,7 +5,8 @@ an optional positional prompt, prints the model's response to stdout. Errors
 and verbose logs go to stderr.
 
 Supports Anthropic (Claude), OpenAI (GPT / o-series / gpt-5), Google (Gemini),
-DeepSeek, xAI (Grok), Z.AI (GLM), and Azure AI Foundry (OpenAI + Anthropic).
+DeepSeek, xAI (Grok), Z.AI (GLM), Moonshot (Kimi), and Azure AI Foundry
+(OpenAI + Anthropic).
 Provider comes from a model registry, not from the model name — see [Model routing](#model-routing).
 
 ## Install
@@ -34,6 +35,7 @@ Per provider:
 | DeepSeek | `DEEPSEEK_API_KEY` | |
 | xAI (Grok) | `XAI_API_KEY` | |
 | Z.AI (GLM) | `ZAI_API_KEY` | |
+| Moonshot (Kimi) | `MOONSHOT_API_KEY` (or `KIMI_API_KEY`) | |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` |
 | Azure Anthropic | `AZURE_ANTHROPIC_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` |
 
@@ -57,6 +59,7 @@ because the lab that *trained* a model tells you nothing about the host that
 | `deepseek` | `deepseek.py` | `DEEPSEEK_API_KEY` |
 | `grok` | `grok.py` | `XAI_API_KEY` |
 | `zai` (GLM) | `zai.py` | `ZAI_API_KEY` |
+| `kimi` | `kimi.py` | `MOONSHOT_API_KEY` / `KIMI_API_KEY` |
 | `groq` | `openai_compat.py` | `GROQ_API_KEY` |
 | `regolo` | `openai_compat.py` | `REGOLO_API_KEY` |
 | `azure_openai` | `azure_openai.py` | `AZURE_OPENAI_API_KEY` + `AZURE_FOUNDRY_ENDPOINT` |
@@ -69,6 +72,7 @@ gllm -m deepseek-v4-pro "..."
 gllm -m grok-4.3 "..."
 gllm -m glm-5.2 -r high "..."         # Z.AI / GLM
 gllm -m glm-4.6v -f shot.png "..."    # GLM vision model
+gllm -m kimi-k3 -r xhigh "..."        # Moonshot Kimi
 gllm -m gpt-5.1-dev "..."             # Azure OpenAI (Foundry MaaS)
 gllm -m claude-opus-4-8-dev "..."     # Azure Anthropic (Foundry)
 ```
@@ -134,6 +138,7 @@ The families below are illustrative orientation, **not** an authoritative list �
 | DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
 | xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309` |
 | Z.AI / GLM | text: `glm-5.2` (reasoning_effort), `glm-5.1/5/4.7/4.6/4.5`; vision: `glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr` |
+| Moonshot Kimi | `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, `kimi-k2.6` |
 | Azure OpenAI (`-dev`) | `gpt-5{,-mini}-dev`, `gpt-5.1-dev`, `gpt-5.2-dev`, `gpt-5.4{,-pro}-dev`, `gpt-5.5-dev`, `o3-dev` |
 | Azure Anthropic (`-dev`) | `claude-opus-4-5/6/7/8-dev` |
 
@@ -142,7 +147,7 @@ The families below are illustrative orientation, **not** an authoritative list �
 `WORK=1` (or `WORK_ENV=1`) is the corporate/Azure switch — it redirects direct
 Anthropic/OpenAI models to their Azure Foundry deployment by appending the
 `-dev` marker. It has **nothing** to do with reasoning (that's `--reasoning`,
-below). Default off. No effect on Gemini/Grok/DeepSeek/GLM (no Azure variant).
+below). Default off. No effect on Gemini/Grok/DeepSeek/GLM/Kimi (no Azure variant).
 
 ```sh
 WORK=1 gllm -m claude-opus-4-8 "..."   # -> azure_anthropic, deployment claude-opus-4-8-dev
@@ -199,6 +204,9 @@ gllm -r low   -m gemini-3.5-flash "quick sanity check"
 | Z.AI GLM-5.2 | `thinking.enabled` + `reasoning_effort` | the level, verbatim (`low`/`medium`→high, `xhigh`→max internally) |
 | Z.AI GLM 4.5–5.1 | `thinking.enabled` (binary) | thinking on; effort ignored |
 | DeepSeek | `thinking.enabled` + `reasoning_effort` | only {high, max}; xhigh → max |
+| Kimi K3 | `reasoning_effort` | low / low / high / max |
+| Kimi K2.6 | binary `thinking.enabled` | thinking on; effort ignored |
+| Kimi K2.7 Code | none | always reasons, no knob → exit 2 |
 | OpenAI Chat (gpt-4o), grok-build-0.1, grok-4.20-0309-*, glm-ocr / glm-4-32b | none | no knob → exit 2 |
 
 For Anthropic/OpenAI, setting a level also bumps `max_tokens` so reasoning
@@ -314,6 +322,7 @@ text-extraction fallback. Pick a model that fits the data.
 | Gemini | yes (inline Part) | yes (inline Part) |
 | xAI Grok | yes (inherits OpenAI Responses) | no |
 | Z.AI / GLM | vision models only (`glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr`; `image_url`) | no |
+| Moonshot Kimi | yes (`image_url`) | no |
 | DeepSeek | no | no |
 
 Text files go through the existing `cat … \| gllm` pipe — `-f` is for the binary
@@ -424,6 +433,7 @@ src/gllm/
     ├── gemini.py        # response_json_schema
     ├── deepseek.py      # OpenAI-compatible @ api.deepseek.com
     ├── zai.py           # GLM, OpenAI-compatible Chat @ api.z.ai (thinking + vision)
+    ├── kimi.py          # Kimi, OpenAI-compatible Chat @ api.moonshot.ai
     ├── grok.py          # OpenAIProvider subclass @ api.x.ai/v1
     ├── azure_openai.py  # OpenAIProvider subclass @ Foundry MaaS
     └── azure_anthropic.py # AnthropicFoundry + native thinking

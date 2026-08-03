@@ -95,6 +95,8 @@ def test_low_is_never_upgraded():
         ("claude-opus-4-5", ("low", "medium", "high", "xhigh")),
         ("o3", ("low", "medium", "high", "high")),
         ("groq:openai/gpt-oss-120b", ("low", "medium", "high", "high")),
+        ("kimi-k3", ("low", "low", "high", "max")),
+        ("kimi-k2.6", ("high", "high", "high", "high")),
     ],
 )
 def test_resolution_matrix(model, expected):
@@ -173,6 +175,9 @@ def test_gemini_budgets_increase_then_go_dynamic():
         ("zai", "glm-4.6", True),
         ("zai", "glm-ocr", False),
         ("zai", "glm-4-32b-0414-128k", False),
+        ("kimi", "kimi-k3", True),
+        ("kimi", "kimi-k2.6", True),
+        ("kimi", "kimi-k2.7-code", False),
     ],
 )
 def test_supports_reasoning_truth_table(provider, model, expected):

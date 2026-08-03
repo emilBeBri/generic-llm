@@ -58,6 +58,12 @@ PROVIDERS: dict[str, ProviderSpec] = {
     ),
     "grok": ProviderSpec("grok", "xAI Grok", "grok", ("XAI_API_KEY",)),
     "zai": ProviderSpec("zai", "Z.AI", "zai", ("ZAI_API_KEY",)),
+    "kimi": ProviderSpec(
+        "kimi",
+        "Moonshot Kimi",
+        "kimi",
+        ("MOONSHOT_API_KEY", "KIMI_API_KEY"),
+    ),
     # --- Hosts: OpenAI-compatible serving of other labs' open models ---
     "groq": ProviderSpec(
         "groq",

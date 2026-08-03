@@ -17,6 +17,7 @@ from gllm.usage import (
     from_anthropic,
     from_deepseek,
     from_gemini,
+    from_kimi,
     from_openai_chat,
     from_openai_responses,
 )
@@ -90,10 +91,22 @@ def test_deepseek_maps_prompt_cache_hit():
     assert out["reasoning_tokens"] == 40
 
 
+def test_kimi_maps_top_level_cached_tokens():
+    u = SimpleNamespace(
+        prompt_tokens=300,
+        completion_tokens=100,
+        cached_tokens=256,
+        completion_tokens_details=SimpleNamespace(reasoning_tokens=40),
+    )
+    out = from_kimi(u)
+    assert out["cache_read_tokens"] == 256
+    assert out["reasoning_tokens"] == 40
+
+
 def test_mappers_are_none_safe():
     # A provider that returns no usage object must not raise — all zeros.
     for fn in (from_anthropic, from_openai_chat, from_openai_responses,
-               from_gemini, from_deepseek):
+               from_gemini, from_deepseek, from_kimi):
         out = fn(None)
         assert out["input_tokens"] == 0 and out["usage_raw"] == {}
 

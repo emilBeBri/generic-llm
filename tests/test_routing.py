@@ -49,6 +49,10 @@ def test_full_bebri_chat_model_set():
         "glm-4.6": "zai",
         "glm-4.6v": "zai",
         "glm-ocr": "zai",
+        "kimi-k3": "kimi",
+        "kimi-k2.7-code": "kimi",
+        "kimi-k2.7-code-highspeed": "kimi",
+        "kimi-k2.6": "kimi",
         "gpt-5.4-pro-dev": "azure_openai",
         "gpt-5.6-sol-dev": "azure_openai",
         "gpt-5.6-terra-dev": "azure_openai",
@@ -88,5 +92,11 @@ def test_work_does_not_double_suffix_or_touch_explicit_dev():
 
 
 def test_work_leaves_non_azure_providers_alone():
-    for m in ["gemini-3.5-flash", "grok-4", "deepseek-v4-flash", "glm-5.2"]:
+    for m in [
+        "gemini-3.5-flash",
+        "grok-4",
+        "deepseek-v4-flash",
+        "glm-5.2",
+        "kimi-k3",
+    ]:
         assert effective_model(m, True) == m

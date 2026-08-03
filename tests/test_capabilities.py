@@ -25,6 +25,8 @@ def test_image_capability_matrix():
     assert supports_image("azure_openai", "gpt-5.1-dev")
     assert supports_image("gemini", "gemini-3.6-flash")
     assert supports_image("grok", "grok-4.3")
+    assert supports_image("kimi", "kimi-k3")
+    assert supports_image("kimi", "kimi-k2.6")
     assert not supports_image("deepseek", "deepseek-v4-flash")
 
 
@@ -75,6 +77,7 @@ def test_pdf_capability_matrix():
     assert not supports_pdf("grok", "grok-4.3")
     assert not supports_pdf("deepseek", "deepseek-v4-flash")
     assert not supports_pdf("zai", "glm-4.6v")
+    assert not supports_pdf("kimi", "kimi-k3")
 
 
 def test_text_generation_filter_keeps_chat_models():
@@ -137,3 +140,4 @@ def test_strict_schema_matrix():
     # DeepSeek and GLM: json_object only (no native json_schema) — stay refused.
     assert not supports_strict_schema("deepseek", "deepseek-v4-flash")
     assert not supports_strict_schema("zai", "glm-4.6")
+    assert not supports_strict_schema("kimi", "kimi-k3")

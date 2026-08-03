@@ -163,3 +163,21 @@ def from_deepseek(usage: Any) -> dict:
         "reasoning_tokens": _i(ctd, "reasoning_tokens"),
         "usage_raw": _to_plain(usage),
     }
+
+
+def from_kimi(usage: Any) -> dict:
+    """Kimi Chat Completions reports cached prefix tokens at usage.cached_tokens.
+
+    This is top-level, unlike OpenAI's prompt_tokens_details.cached_tokens.
+    """
+    if usage is None:
+        return dict(_ZERO)
+    ctd = getattr(usage, "completion_tokens_details", None)
+    return {
+        "input_tokens": _i(usage, "prompt_tokens"),
+        "output_tokens": _i(usage, "completion_tokens"),
+        "cache_read_tokens": _i(usage, "cached_tokens"),
+        "cache_write_tokens": 0,
+        "reasoning_tokens": _i(ctd, "reasoning_tokens"),
+        "usage_raw": _to_plain(usage),
+    }

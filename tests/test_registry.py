@@ -26,6 +26,8 @@ _VALID_DIALECTS = {
     "zai_effort",
     "zai_thinking",
     "deepseek_effort",
+    "kimi_effort",
+    "kimi_thinking",
     "compat_effort",
     "compat_thinking_flag",
 }
@@ -170,6 +172,7 @@ def test_dialect_matches_provider():
         "grok": "openai_",
         "zai": "zai_",
         "deepseek": "deepseek_",
+        "kimi": "kimi_",
         "groq": "compat_",
         "regolo": "compat_",
     }

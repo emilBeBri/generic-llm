@@ -65,6 +65,8 @@ def _legacy_guess_provider(model: str) -> str:
         guess = "grok"
     elif "glm" in m:
         guess = "zai"
+    elif m.startswith("kimi-"):
+        guess = "kimi"
     else:
         # gpt-*, o1, o3, o4, codex, and anything unrecognised.
         guess = "openai"

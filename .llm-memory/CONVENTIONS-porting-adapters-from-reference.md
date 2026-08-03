@@ -25,9 +25,10 @@ not a copy**. The Z.AI/GLM port (2026-06-18) established the pattern below;
 - function calling / tools / `tool_choice`, native web search.
 - `reasoning_content` round-tripping (single-turn → nothing to echo forward).
 - streaming partials, token/cache meters.
-- the hardcoded model registry + prices. gllm has **no** registry; discover live
-  via `gllm --models` (see [[ADR-model-listing-live-probe]]). Porting the
-  registry reintroduces the stale-catalog disease that command exists to kill.
+- conversation-only registry fields and pricing logic. gllm has its own
+  capability/routing registry and price override layer; port model rows into
+  those shapes rather than copying bebri-chat's records verbatim. Discover
+  what exists live via `gllm --models` (see [[ADR-model-listing-live-probe]]).
 - the thinking-disabled toggle (gllm has no off-switch; omitting `--reasoning`
   is hands-off → provider default).
 

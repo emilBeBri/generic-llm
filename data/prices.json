@@ -225,6 +225,27 @@
     "input_cached": 0.2,
     "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
   },
+  "kimi-k2.6": {
+    "input": 0.95,
+    "output": 4.0,
+    "input_cached": 0.16
+  },
+  "kimi-k2.7-code": {
+    "input": 0.95,
+    "output": 4.0,
+    "input_cached": 0.19
+  },
+  "kimi-k2.7-code-highspeed": {
+    "input": 1.9,
+    "output": 8.0,
+    "input_cached": 0.38,
+    "note": "Same weights as kimi-k2.7-code at 2x price; buys output speed only."
+  },
+  "kimi-k3": {
+    "input": 3.0,
+    "output": 15.0,
+    "input_cached": 0.3
+  },
   "grok-4.20-0309-non-reasoning": {
     "input": 1.25,
     "output": 2.5,

@@ -48,7 +48,8 @@ class ModelCaps(NamedTuple):
     native_efforts: tuple[str, ...] = ()
     # 'anthropic_adaptive' | 'anthropic_budget' | 'gemini_budget' |
     # 'openai_effort' | 'zai_effort' | 'zai_thinking' | 'deepseek_effort' |
-    # 'compat_effort' | 'compat_thinking_flag'
+    # 'kimi_effort' | 'kimi_thinking' | 'compat_effort' |
+    # 'compat_thinking_flag'
     thinking_dialect: str | None = None
     supports_vision: bool = False
     supports_pdf: bool = False
@@ -177,6 +178,20 @@ _GLM_NO_THINK = ModelCaps()
 _GLM_VISION_EFFORT = _GLM_EFFORT._replace(supports_vision=True)
 _GLM_VISION_THINK = _GLM_THINK._replace(supports_vision=True)
 _GLM_VISION_NO_THINK = ModelCaps(supports_vision=True)
+
+# --- Moonshot Kimi. Every current model accepts images. Reasoning control is
+# per-family: K3 has low|high|max, K2.6 is binary, K2.7 Code has no knob.
+_KIMI_EFFORT = ModelCaps(
+    native_efforts=("low", "high", "max"),
+    thinking_dialect="kimi_effort",
+    supports_vision=True,
+)
+_KIMI_THINK = ModelCaps(
+    native_efforts=("high",),
+    thinking_dialect="kimi_thinking",
+    supports_vision=True,
+)
+_KIMI_ALWAYS = ModelCaps(supports_vision=True)
 
 # --- OpenAI-compatible hosts (Groq, Regolo). Chat Completions only, no schema
 # enforcement, no document input. Groq takes a bare `reasoning_effort`; Regolo
@@ -489,6 +504,25 @@ MODELS: dict[str, ModelSpec] = {
         "glm-ocr", "zai", 8_192, _GLM_VISION_NO_THINK, alt_model="glm-4.6v"
     ),
     # ----------------------------------------------------------------- #
+    # Moonshot Kimi. Bare ids are first-party; the groq:moonshotai row below
+    # is a separate, deprecated K2 checkpoint rented from Groq.
+    # ----------------------------------------------------------------- #
+    "kimi-k3": ModelSpec(
+        "kimi-k3", "kimi", 1_048_576, _KIMI_EFFORT,
+        alt_model="deepseek-v4-pro",
+    ),
+    "kimi-k2.7-code": ModelSpec(
+        "kimi-k2.7-code", "kimi", 262_144, _KIMI_ALWAYS,
+        alt_model="kimi-k2.7-code-highspeed",
+    ),
+    "kimi-k2.7-code-highspeed": ModelSpec(
+        "kimi-k2.7-code-highspeed", "kimi", 262_144, _KIMI_ALWAYS,
+        alt_model="kimi-k2.7-code",
+    ),
+    "kimi-k2.6": ModelSpec(
+        "kimi-k2.6", "kimi", 262_144, _KIMI_THINK, alt_model="kimi-k3"
+    ),
+    # ----------------------------------------------------------------- #
     # Groq — a HOST, not a lab. Keys are namespaced `groq:<real-api-id>`;
     # wire_id carries the bare id. This is why routing cannot be a substring
     # guess: `groq:openai/gpt-oss-120b` contains "gpt" and
@@ -727,6 +761,8 @@ def _legacy_caps(provider: str, model: str) -> ModelCaps:
             thinking_dialect=dialect,
             supports_vision=vision,
         )
+    if provider == "kimi":
+        return ModelCaps(supports_vision=True)
     if provider in ("groq", "regolo"):
         return ModelCaps(
             native_efforts=("low", "medium", "high"),

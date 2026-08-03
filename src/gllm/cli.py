@@ -198,6 +198,10 @@ def _build_provider(name: str) -> LLMProvider:
         from .adapters.zai import ZaiProvider
 
         return ZaiProvider()
+    if kind == "kimi":
+        from .adapters.kimi import KimiProvider
+
+        return KimiProvider()
     if kind == "openai_compat":
         from .adapters.openai_compat import OpenAICompatProvider
 
