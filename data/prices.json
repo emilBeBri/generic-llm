@@ -36,6 +36,20 @@
     "output": 60.0,
     "note": "Azure Foundry flat -dev pricing."
   },
+  "claude-opus-5-dev": {
+    "input": 5.0,
+    "output": 25.0,
+    "input_cached": 0.5,
+    "cache_write": 6.25,
+    "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
+  },
+  "claude-sonnet-5-dev": {
+    "input": 2.0,
+    "output": 10.0,
+    "input_cached": 0.2,
+    "cache_write": 2.5,
+    "note": "Azure Foundry deployment; tracks the public introductory rate through 2026-08-31."
+  },
   "codex-mini-latest": {
     "input": 1.5,
     "output": 6.0
@@ -192,6 +206,24 @@
     "output": 30.0,
     "input_cached": 0.5,
     "note": "Alias of gpt-5.6-sol."
+  },
+  "gpt-5.6-luna-dev": {
+    "input": 0.2,
+    "output": 1.2,
+    "input_cached": 0.02,
+    "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
+  },
+  "gpt-5.6-sol-dev": {
+    "input": 5.0,
+    "output": 30.0,
+    "input_cached": 0.5,
+    "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
+  },
+  "gpt-5.6-terra-dev": {
+    "input": 2.0,
+    "output": 12.0,
+    "input_cached": 0.2,
+    "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
   },
   "grok-4.20-0309-non-reasoning": {
     "input": 1.25,
