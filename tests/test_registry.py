@@ -192,12 +192,11 @@ def test_api_surface_only_on_openai_family():
             assert spec.provider in _OPENAI_FAMILY, key
 
 
-def test_chat_surface_models_have_no_pdf_or_reasoning():
-    """PDF input is `input_file`, which exists only on the Responses API, and
-    the classic chat line has no reasoning control."""
+def test_chat_surface_models_have_files_but_no_reasoning():
+    """OpenAI Chat has file content parts but no reasoning control."""
     for key, spec in MODELS.items():
         if spec.caps.api_surface == "chat":
-            assert not spec.caps.supports_pdf, key
+            assert spec.caps.supports_pdf, key
             assert not spec.caps.native_efforts, key
 
 

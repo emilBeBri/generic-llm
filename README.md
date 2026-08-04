@@ -292,9 +292,12 @@ Schema source: inline JSON, `@path/to/schema.json`, or a bare path ending in `.j
 
 ## File inputs
 
-`-f PATH` attaches a binary file (image or PDF) to the request. It's repeatable.
-Use `-` to read from stdin, or bash process substitution `<(cmd)` — `-f` only
-needs *a path*, and the shell already knows how to compose paths with pipes.
+`-f PATH` attaches a provider-supported file to the request. It's repeatable.
+All supported models can use their existing image/PDF paths; public OpenAI GPT
+models additionally accept Office documents, presentations, spreadsheets,
+text, and source files. Use `-` to read bytes from stdin, or bash process
+substitution `<(cmd)` — `-f` only needs *a path*, and the shell already knows
+how to compose paths with pipes.
 
 ```sh
 # Plain path
@@ -309,12 +312,20 @@ gllm -m gemini-3.1-pro-preview -f <(curl -s https://example.com/x.png) "ocr"
 # Multiple files in one call
 gllm -m claude-opus-4-8 -f a.pdf -f b.pdf "what's different?"
 
+# Native Word document through public OpenAI
+gllm -m gpt-4.1 -f report.docx "extract the decisions"
+
+# Spreadsheet augmentation through public OpenAI
+gllm -m gpt-5.6 -f results.xlsx "summarize each sheet"
+
 # xargs fan-out
 fd -e png . | xargs -I{} gllm -f {} "one-line caption"
 ```
 
 MIME type is sniffed from the leading bytes (PNG/JPEG/GIF/WebP/PDF magic) and
-falls back to the file extension. Use `--mime TYPE` to override.
+falls back to a documented file-extension map and then the standard MIME
+database. Use `--mime TYPE` to override, especially for `-f -` and process
+substitution paths without a useful suffix.
 
 ### What attaches where (native or fail)
 
@@ -322,19 +333,24 @@ Each provider uses its own native attachment API. If the provider has no native
 mechanism for that file type, `gllm` fails fast (exit 2) — no silent
 text-extraction fallback. Pick a model that fits the data.
 
-| Provider | Image | PDF |
-|---|---|---|
-| Anthropic / Azure Anthropic | yes (image block) | yes (document block) |
-| OpenAI / Azure OpenAI (Responses: gpt-5, o-series, codex) | yes (`input_image`) | yes (`input_file`) |
-| OpenAI / Azure OpenAI (Chat: gpt-4*, gpt-3.5) | yes (`image_url`) | no |
-| Gemini | yes (inline Part) | yes (inline Part) |
-| xAI Grok | yes (inherits OpenAI Responses) | no |
-| Z.AI / GLM | vision models only (`glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr`; `image_url`) | no |
-| Moonshot Kimi | yes (`image_url`) | no |
-| DeepSeek | no | no |
+| Provider | Image | PDF | Other documents |
+|---|---|---|---|
+| Public OpenAI Responses (gpt-5, o-series, codex) | yes (`input_image`) | yes (`input_file`) | yes (`input_file`) |
+| Public OpenAI Chat (gpt-4*) | yes (`image_url`) | yes (`file`) | yes (`file`) |
+| Azure OpenAI Responses / Chat | yes | yes | no |
+| Anthropic / Azure Anthropic | yes (`image`) | yes (`document`) | no |
+| Gemini | yes (inline Part) | yes (inline Part) | no |
+| xAI Grok | yes (`input_image`) | no | no |
+| Z.AI / GLM | vision models only (`glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr`; `image_url`) | no | no |
+| Moonshot Kimi | yes (`image_url`) | no | no |
+| Groq / Regolo / DeepSeek | no | no | no |
 
-Text files go through the existing `cat … \| gllm` pipe — `-f` is for the binary
-content you can't pipe sensibly.
+OpenAI extracts text from non-PDF documents; it does **not** include embedded
+images or charts. Convert those files to PDF yourself when visual fidelity
+matters. Spreadsheet input parses up to the first 1,000 rows per sheet, and
+OpenAI limits each request to 50 MB across all attached files. The ordinary
+`cat file.txt | gllm` path remains the provider-neutral choice for plain text;
+`-f file.txt` asks public OpenAI to process it as a native file input.
 
 ## Recipes — instruction & schema libraries
 

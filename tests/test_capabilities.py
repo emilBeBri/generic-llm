@@ -2,10 +2,12 @@ from gllm.adapters._capabilities import (
     glm_supports_reasoning_effort,
     is_glm_vision_model,
     is_text_generation_model,
+    supports_attachment,
     supports_image,
     supports_pdf,
     use_responses_api,
 )
+from gllm.domain import Attachment
 
 
 def test_responses_api_models():
@@ -67,17 +69,68 @@ def test_pdf_capability_matrix():
     assert supports_pdf("azure_anthropic", "claude-opus-4-8-dev")
     assert supports_pdf("gemini", "gemini-3.1-pro-preview")
 
-    # OpenAI: PDFs only on the Responses API path.
+    # OpenAI supports file content parts on both API surfaces.
     assert supports_pdf("openai", "gpt-5")
     assert supports_pdf("openai", "o3-mini")
-    assert not supports_pdf("openai", "gpt-4o")
-    assert not supports_pdf("openai", "gpt-4.1-mini")
+    assert supports_pdf("openai", "gpt-4o")
+    assert supports_pdf("openai", "gpt-4.1-mini")
+    assert supports_pdf("azure_openai", "gpt-4.1-nano-dev")
 
     # Grok / DeepSeek / GLM: never (no native document input).
     assert not supports_pdf("grok", "grok-4.3")
     assert not supports_pdf("deepseek", "deepseek-v4-flash")
     assert not supports_pdf("zai", "glm-4.6v")
     assert not supports_pdf("kimi", "kimi-k3")
+
+
+def test_non_pdf_documents_are_public_openai_only():
+    docx = Attachment(
+        data=b"office bytes",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_label="report.docx",
+    )
+    assert supports_attachment("openai", "gpt-5.6", docx)
+    assert supports_attachment("openai", "gpt-4o", docx)
+
+    for provider, model in [
+        ("azure_openai", "gpt-5.1-dev"),
+        ("anthropic", "claude-opus-5"),
+        ("azure_anthropic", "claude-opus-4-8-dev"),
+        ("gemini", "gemini-3.6-flash"),
+        ("grok", "grok-4.3"),
+        ("zai", "glm-5v-turbo"),
+        ("kimi", "kimi-k3"),
+        ("deepseek", "deepseek-v4-flash"),
+    ]:
+        assert not supports_attachment(provider, model, docx)
+
+
+def test_openai_accepts_text_file_from_stdin_with_explicit_mime():
+    text = Attachment(
+        data=b"hello",
+        mime_type="text/plain",
+        source_label="<stdin>",
+    )
+    assert supports_attachment("openai", "gpt-4.1", text)
+    assert not supports_attachment("azure_openai", "gpt-4.1-nano-dev", text)
+
+
+def test_openai_mime_override_accepts_an_unlisted_suffix():
+    text = Attachment(
+        data=b"hello",
+        mime_type="text/plain",
+        source_label="notes.dat",
+    )
+    assert supports_attachment("openai", "gpt-4.1", text)
+
+
+def test_openai_rejects_unsupported_file_suffix():
+    archive = Attachment(
+        data=b"zip",
+        mime_type="application/zip",
+        source_label="bundle.zip",
+    )
+    assert not supports_attachment("openai", "gpt-5.6", archive)
 
 
 def test_text_generation_filter_keeps_chat_models():

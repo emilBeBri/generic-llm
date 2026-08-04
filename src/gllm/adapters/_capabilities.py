@@ -17,6 +17,9 @@ registry has by definition never seen.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from ..domain import Attachment
 from ..models import (
     _legacy_glm_effort,
     _legacy_glm_thinking,
@@ -24,6 +27,236 @@ from ..models import (
     caps_for,
     spec_for,
 )
+
+_OPENAI_OFFICE_MIME_BY_SUFFIX = {
+    ".csv": "text/csv",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".dot": "application/msword",
+    ".iif": "text/x-iif",
+    ".keynote": "application/vnd.apple.keynote",
+    ".odt": "application/vnd.oasis.opendocument.text",
+    ".pages": "application/vnd.apple.pages",
+    ".pot": "application/vnd.ms-powerpoint",
+    ".ppa": "application/vnd.ms-powerpoint",
+    ".pps": "application/vnd.ms-powerpoint",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".pwz": "application/vnd.ms-powerpoint",
+    ".rtf": "application/rtf",
+    ".tsv": "text/tsv",
+    ".wiz": "application/vnd.ms-powerpoint",
+    ".xla": "application/vnd.ms-excel",
+    ".xlb": "application/vnd.ms-excel",
+    ".xlc": "application/vnd.ms-excel",
+    ".xlm": "application/vnd.ms-excel",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xlt": "application/vnd.ms-excel",
+    ".xlw": "application/vnd.ms-excel",
+}
+
+_OPENAI_TEXT_SUFFIXES = frozenset(
+    {
+        ".asm",
+        ".bat",
+        ".c",
+        ".cc",
+        ".conf",
+        ".cpp",
+        ".css",
+        ".cxx",
+        ".def",
+        ".dic",
+        ".eml",
+        ".h",
+        ".hh",
+        ".htm",
+        ".html",
+        ".ics",
+        ".ifb",
+        ".in",
+        ".js",
+        ".json",
+        ".ksh",
+        ".list",
+        ".log",
+        ".markdown",
+        ".md",
+        ".mht",
+        ".mhtml",
+        ".mime",
+        ".mjs",
+        ".nws",
+        ".pl",
+        ".py",
+        ".rst",
+        ".s",
+        ".sql",
+        ".srt",
+        ".text",
+        ".txt",
+        ".vcf",
+        ".vtt",
+        ".xml",
+        # The current OpenAI MIME table also accepts these source MIME types.
+        ".astro",
+        ".awk",
+        ".bash",
+        ".clj",
+        ".cmake",
+        ".cs",
+        ".dart",
+        ".diff",
+        ".dockerfile",
+        ".ejs",
+        ".ex",
+        ".exs",
+        ".go",
+        ".graphql",
+        ".groovy",
+        ".handlebars",
+        ".hcl",
+        ".hs",
+        ".ini",
+        ".java",
+        ".jl",
+        ".jsx",
+        ".kt",
+        ".less",
+        ".lisp",
+        ".lua",
+        ".mustache",
+        ".patch",
+        ".php",
+        ".properties",
+        ".proto",
+        ".ps1",
+        ".pug",
+        ".r",
+        ".rb",
+        ".rs",
+        ".sass",
+        ".scala",
+        ".scss",
+        ".sh",
+        ".swift",
+        ".tex",
+        ".tmpl",
+        ".toml",
+        ".ts",
+        ".tsx",
+        ".twig",
+        ".yaml",
+        ".yml",
+        ".zsh",
+    }
+)
+
+_OPENAI_TEXT_MIME_BY_SUFFIX = {
+    ".asm": "text/x-asm",
+    ".bash": "text/x-bash",
+    ".c": "text/x-c",
+    ".cc": "text/x-c++",
+    ".cpp": "text/x-c++",
+    ".css": "text/css",
+    ".cxx": "text/x-c++",
+    ".diff": "text/x-diff",
+    ".eml": "message/rfc822",
+    ".h": "text/x-c",
+    ".hh": "text/x-c++",
+    ".htm": "text/html",
+    ".html": "text/html",
+    ".ics": "text/calendar",
+    ".ifb": "text/calendar",
+    ".js": "text/javascript",
+    ".json": "application/json",
+    ".jsx": "text/jsx",
+    ".markdown": "text/markdown",
+    ".md": "text/markdown",
+    ".mjs": "text/javascript",
+    ".patch": "text/x-patch",
+    ".py": "text/x-python",
+    ".rs": "application/x-rust",
+    ".rst": "text/x-rst",
+    ".sh": "text/x-sh",
+    ".sql": "text/x-sql",
+    ".toml": "application/toml",
+    ".ts": "text/x-typescript",
+    ".tsx": "text/tsx",
+    ".xml": "text/xml",
+    ".yaml": "application/x-yaml",
+    ".yml": "application/x-yaml",
+    ".zsh": "text/x-zsh",
+}
+
+_OPENAI_FILE_SUFFIXES = frozenset(_OPENAI_OFFICE_MIME_BY_SUFFIX) | _OPENAI_TEXT_SUFFIXES
+
+_OPENAI_APPLICATION_MIMES = frozenset(
+    {
+        "application/csv",
+        "application/graphql",
+        "application/javascript",
+        "application/json",
+        "application/msword",
+        "application/rtf",
+        "application/toml",
+        "application/typescript",
+        "application/vnd.apple.iwork",
+        "application/vnd.apple.keynote",
+        "application/vnd.apple.pages",
+        "application/vnd.google-apps.document",
+        "application/vnd.google-apps.presentation",
+        "application/vnd.google-apps.spreadsheet",
+        "application/vnd.ms-excel",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.oasis.opendocument.text",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/xml",
+        "message/rfc822",
+    }
+) | frozenset(_OPENAI_TEXT_MIME_BY_SUFFIX.values())
+
+_OPENAI_FILE_SUFFIX_BY_MIME = {
+    **{mime: suffix for suffix, mime in _OPENAI_OFFICE_MIME_BY_SUFFIX.items()},
+    **{mime: suffix for suffix, mime in _OPENAI_TEXT_MIME_BY_SUFFIX.items()},
+    "application/msword": ".doc",
+    "application/pdf": ".pdf",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "text/plain": ".txt",
+    "text/x-c": ".c",
+    "text/x-c++": ".cpp",
+}
+
+
+def openai_file_mime_for_path(path: Path) -> str | None:
+    """Canonical MIME for an OpenAI-supported local file."""
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return "application/pdf"
+    if suffix in _OPENAI_OFFICE_MIME_BY_SUFFIX:
+        return _OPENAI_OFFICE_MIME_BY_SUFFIX[suffix]
+    if suffix in _OPENAI_TEXT_SUFFIXES:
+        return _OPENAI_TEXT_MIME_BY_SUFFIX.get(suffix, "text/plain")
+    return None
+
+
+def openai_file_extension_for_mime(mime_type: str) -> str:
+    """Preferred accepted filename suffix for a documented OpenAI MIME."""
+    return _OPENAI_FILE_SUFFIX_BY_MIME.get(mime_type.lower(), "")
+
+
+def _is_openai_file_input(attachment: Attachment) -> bool:
+    suffix = Path(attachment.source_label).suffix.lower()
+    mime = attachment.mime_type.lower()
+    return (
+        suffix in _OPENAI_FILE_SUFFIXES
+        or mime.startswith("text/")
+        or mime in _OPENAI_APPLICATION_MIMES
+    )
 
 
 def use_responses_api(model: str) -> bool:
@@ -50,9 +283,21 @@ def supports_image(provider: str, model: str = "") -> bool:
 
 
 def supports_pdf(provider: str, model: str) -> bool:
-    """Native document input. Anthropic and Gemini take PDFs on every model;
-    OpenAI only via `input_file` on the Responses API; nobody else."""
+    """Native PDF input, including OpenAI's Responses and Chat file parts."""
     return caps_for(model, provider).supports_pdf
+
+
+def supports_attachment(
+    provider: str,
+    model: str,
+    attachment: Attachment,
+) -> bool:
+    """Can this provider/model consume the attachment without conversion?"""
+    if attachment.mime_type.startswith("image/"):
+        return supports_image(provider, model)
+    if attachment.mime_type == "application/pdf":
+        return supports_pdf(provider, model)
+    return provider == "openai" and _is_openai_file_input(attachment)
 
 
 def supports_reasoning(provider: str, model: str) -> bool:

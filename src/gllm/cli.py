@@ -25,8 +25,8 @@ from . import pricing
 from . import reasoning as reasoning_mod
 from .adapters._capabilities import (
     native_efforts,
-    supports_image,
-    supports_pdf,
+    openai_file_mime_for_path,
+    supports_attachment,
     supports_reasoning,
     supports_strict_schema,
 )
@@ -109,6 +109,9 @@ def _sniff_mime(data: bytes, path_hint: Path | None = None) -> str | None:
     if len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
         return "image/webp"
     if path_hint is not None:
+        openai_file_mime = openai_file_mime_for_path(path_hint)
+        if openai_file_mime:
+            return openai_file_mime
         guess, _ = mimetypes.guess_type(str(path_hint))
         if guess:
             return guess
@@ -390,7 +393,7 @@ def _parser() -> argparse.ArgumentParser:
         dest="files",
         metavar="PATH",
         help=(
-            "Attach a file (image or PDF). Repeatable. Use `-` for stdin "
+            "Attach a provider-supported file. Repeatable. Use `-` for stdin "
             "(mutually exclusive with text-on-stdin in that invocation). "
             "Process substitution `<(cmd)` works as a path."
         ),
@@ -586,15 +589,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # Native-or-fail: refuse to dispatch if any attachment is unsupported.
     for a in attachments:
-        kind = "image" if a.mime_type.startswith("image/") else (
-            "pdf" if a.mime_type == "application/pdf" else a.mime_type
-        )
-        ok = (
-            supports_image(provider_name, args.model) if kind == "image"
-            else supports_pdf(provider_name, args.model) if kind == "pdf"
-            else False
-        )
-        if not ok:
+        if not supports_attachment(provider_name, args.model, a):
+            kind = (
+                "image"
+                if a.mime_type.startswith("image/")
+                else "PDF"
+                if a.mime_type == "application/pdf"
+                else f"file type {a.mime_type}"
+            )
             print(
                 f"gllm: {provider_name} does not accept {kind} inputs "
                 f"(model={args.model}). Try a vision/document-capable model.",

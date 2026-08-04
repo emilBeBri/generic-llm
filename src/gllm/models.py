@@ -94,7 +94,7 @@ _CLAUDE_BUDGET = _CLAUDE_ADAPTIVE_XHIGH._replace(
     thinking_dialect="anthropic_budget",
 )
 
-# --- OpenAI. PDF input is `input_file`, which exists only on the Responses API.
+# --- OpenAI. Both Responses and Chat accept native file inputs.
 _GPT5_MAX = ModelCaps(
     api_surface="responses",
     native_efforts=("none", "low", "medium", "high", "xhigh", "max"),
@@ -109,7 +109,10 @@ _O_SERIES = _GPT5_MAX._replace(native_efforts=("low", "medium", "high"))
 # Responses, but no effort knob.
 _GPT5_CHAT = _GPT5_MAX._replace(native_efforts=(), thinking_dialect=None)
 _GPT4_CHAT = ModelCaps(
-    api_surface="chat", supports_vision=True, supports_strict_schema=True
+    api_surface="chat",
+    supports_vision=True,
+    supports_pdf=True,
+    supports_strict_schema=True,
 )
 
 # --- Gemini. Thinking is a budget int; -1 = dynamic, which we map to xhigh.
@@ -325,7 +328,7 @@ MODELS: dict[str, ModelSpec] = {
     "gpt-5.1-chat-latest": ModelSpec(
         "gpt-5.1-chat-latest", "openai", 128_000, _GPT5_CHAT
     ),
-    # GPT-4 line: Chat Completions, so no reasoning and no PDF.
+    # GPT-4 line: Chat Completions, with file input but no reasoning control.
     "gpt-4.1": ModelSpec(
         "gpt-4.1", "openai", 128_000, _GPT4_CHAT, alt_model="gpt-5.4"
     ),
@@ -747,8 +750,9 @@ def _legacy_caps(provider: str, model: str) -> ModelCaps:
             native_efforts=_ALL_EFFORTS if responses else (),
             thinking_dialect="openai_effort" if responses else None,
             supports_vision=True,
-            # PDF is `input_file`, Responses-only — and xAI has no equivalent.
-            supports_pdf=responses and provider != "grok",
+            # OpenAI and Azure support PDF file parts on both API surfaces.
+            # xAI's Responses-compatible endpoint has no file equivalent.
+            supports_pdf=provider != "grok",
             supports_strict_schema=True,
         )
     if provider == "zai":

@@ -24,10 +24,38 @@ from openai import OpenAI
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..usage import from_openai_chat, from_openai_responses
-from ._capabilities import is_text_generation_model, use_responses_api
+from ._capabilities import (
+    is_text_generation_model,
+    openai_file_extension_for_mime,
+    openai_file_mime_for_path,
+    supports_attachment,
+    use_responses_api,
+)
 
 
-def _responses_input(prompt: str, attachments: tuple[Attachment, ...]):
+def _attachment_filename(attachment: Attachment) -> str:
+    name = Path(attachment.source_label).name
+    if (
+        name
+        and name != "<stdin>"
+        and openai_file_mime_for_path(Path(name)) is not None
+    ):
+        return name
+    extension = openai_file_extension_for_mime(attachment.mime_type)
+    path = Path(name)
+    stem = path.stem if path.suffix else name
+    if not stem or name == "<stdin>":
+        stem = "file"
+    return f"{stem}{extension}"
+
+
+def _responses_input(
+    prompt: str,
+    attachments: tuple[Attachment, ...],
+    *,
+    provider: str = "openai",
+    model: str = "",
+):
     """Build the `input` arg for client.responses.create.
 
     No attachments -> the bare prompt string (historical shape, unchanged
@@ -38,51 +66,58 @@ def _responses_input(prompt: str, attachments: tuple[Attachment, ...]):
         return prompt
     parts: list[dict] = []
     for a in attachments:
+        if not supports_attachment(provider, model, a):
+            raise RuntimeError(
+                f"{provider} responses adapter cannot encode attachment "
+                f"{a.source_label!r} (mime {a.mime_type})."
+            )
         b64 = base64.b64encode(a.data).decode()
         if a.mime_type.startswith("image/"):
             parts.append({
                 "type": "input_image",
                 "image_url": f"data:{a.mime_type};base64,{b64}",
             })
-        elif a.mime_type == "application/pdf":
-            filename = Path(a.source_label).name or "file.pdf"
+        else:
             parts.append({
                 "type": "input_file",
-                "filename": filename,
-                "file_data": f"data:application/pdf;base64,{b64}",
+                "filename": _attachment_filename(a),
+                "file_data": f"data:{a.mime_type};base64,{b64}",
             })
-        else:
-            raise RuntimeError(
-                f"openai responses adapter cannot encode attachment "
-                f"{a.source_label!r} (mime {a.mime_type})."
-            )
     parts.append({"type": "input_text", "text": prompt})
     return [{"role": "user", "content": parts}]
 
 
-def _chat_user_content(prompt: str, attachments: tuple[Attachment, ...]):
-    """User-message content for chat.completions.create. Images only — PDFs
-    have no content-block type on this API and should be rejected upstream by
-    the capability check."""
+def _chat_user_content(
+    prompt: str,
+    attachments: tuple[Attachment, ...],
+    *,
+    provider: str = "openai",
+    model: str = "",
+):
+    """User-message content for chat.completions.create."""
     if not attachments:
         return prompt
     parts: list[dict] = [{"type": "text", "text": prompt}]
     for a in attachments:
-        if a.mime_type == "application/pdf":
+        if not supports_attachment(provider, model, a):
             raise RuntimeError(
-                "openai chat-completions cannot accept PDF inputs; use a "
-                "Responses-API model (gpt-5, o1/o3/o4, codex)."
-            )
-        if not a.mime_type.startswith("image/"):
-            raise RuntimeError(
-                f"openai chat-completions cannot encode attachment "
+                f"{provider} chat-completions cannot encode attachment "
                 f"{a.source_label!r} (mime {a.mime_type})."
             )
         b64 = base64.b64encode(a.data).decode()
-        parts.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{a.mime_type};base64,{b64}"},
-        })
+        if a.mime_type.startswith("image/"):
+            parts.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{a.mime_type};base64,{b64}"},
+            })
+        else:
+            parts.append({
+                "type": "file",
+                "file": {
+                    "filename": _attachment_filename(a),
+                    "file_data": f"data:{a.mime_type};base64,{b64}",
+                },
+            })
     return parts
 
 
@@ -130,7 +165,12 @@ class OpenAIProvider(LLMProvider):
         max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
         kwargs: dict = {
             "model": request.wire_model or request.model,
-            "input": _responses_input(request.prompt, request.attachments),
+            "input": _responses_input(
+                request.prompt,
+                request.attachments,
+                provider=self.name,
+                model=request.model,
+            ),
             "max_output_tokens": max_out,
             "store": False,
         }
@@ -173,7 +213,12 @@ class OpenAIProvider(LLMProvider):
             messages.append({"role": "system", "content": request.system})
         messages.append({
             "role": "user",
-            "content": _chat_user_content(request.prompt, request.attachments),
+            "content": _chat_user_content(
+                request.prompt,
+                request.attachments,
+                provider=self.name,
+                model=request.model,
+            ),
         })
 
         kwargs: dict = {

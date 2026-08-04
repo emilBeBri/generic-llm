@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from gllm.cli import _sniff_mime
 
 
@@ -39,6 +41,48 @@ def test_magic_bytes_override_extension():
     assert _sniff_mime(
         b"\xff\xd8\xff\xe0" + b"\x00" * 100, Path("misnamed.png")
     ) == "image/jpeg"
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        (
+            "report.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        (
+            "slides.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+        (
+            "data.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+        ("data.csv", "text/csv"),
+        ("data.tsv", "text/tsv"),
+        ("notes.txt", "text/plain"),
+        ("README.md", "text/markdown"),
+        ("config.json", "application/json"),
+        ("main.cpp", "text/x-c++"),
+        ("config.yaml", "application/x-yaml"),
+        ("pyproject.toml", "application/toml"),
+    ],
+    ids=[
+        "word",
+        "powerpoint",
+        "excel",
+        "csv",
+        "tsv",
+        "text",
+        "markdown",
+        "json",
+        "cpp",
+        "yaml",
+        "toml",
+    ],
+)
+def test_openai_file_extensions_get_supported_mimes(filename, expected):
+    assert _sniff_mime(b"not magic bytes", Path(filename)) == expected
 
 
 def test_fixture_image_if_present():
