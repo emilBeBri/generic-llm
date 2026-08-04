@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from gllm.models import MODELS, ModelCaps, caps_for, spec_for, wire_id_for
-from gllm.providers import LISTABLE_PROVIDERS, PROVIDERS
+from gllm.providers import DISCOVERABLE_PROVIDERS, LISTABLE_PROVIDERS, PROVIDERS
 from gllm.reasoning import _RANK
 
 _OPENAI_FAMILY = {"openai", "azure_openai", "grok"}
@@ -59,9 +59,11 @@ def test_key_namespace_matches_its_tag():
 
 
 def test_azure_is_not_listable():
-    # Foundry is deployment-scoped: you list *your* deployments, not a catalog.
+    # Foundry has no live deployment-listing inference API.
     for tag in _AZURE:
         assert tag not in LISTABLE_PROVIDERS
+        assert tag in DISCOVERABLE_PROVIDERS
+        assert PROVIDERS[tag].registry_models
 
 
 def test_every_provider_declares_a_key_env():

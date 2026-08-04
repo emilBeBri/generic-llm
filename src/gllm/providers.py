@@ -40,6 +40,11 @@ class ProviderSpec:
     image_url_format_field: bool = False
     # Does the live API expose a catalog we can probe for `gllm --models`?
     listable: bool = True
+    # Does this provider use explicit deployment rows from MODELS for discovery
+    # because its inference API has no live listing endpoint?
+    registry_models: bool = False
+    # Non-key configuration required before this provider is usable.
+    required_env: tuple[str, ...] = ()
     # Registry-key prefix for host providers ('groq:', 'regolo:'). `--models`
     # prepends it so a printed row is copy-pasteable straight into `-m`.
     key_namespace: str | None = None
@@ -87,13 +92,15 @@ PROVIDERS: dict[str, ProviderSpec] = {
         image_url_format_field=True,
         key_namespace="regolo:",
     ),
-    # --- Azure Foundry: deployment-scoped, so not catalog-listable ---
+    # --- Azure Foundry: deployment-scoped, so enumerate registered deployments ---
     "azure_openai": ProviderSpec(
         "azure_openai",
         "Azure OpenAI",
         "azure_openai",
         ("AZURE_OPENAI_API_KEY",),
         listable=False,
+        registry_models=True,
+        required_env=("AZURE_FOUNDRY_ENDPOINT",),
     ),
     "azure_anthropic": ProviderSpec(
         "azure_anthropic",
@@ -101,10 +108,16 @@ PROVIDERS: dict[str, ProviderSpec] = {
         "azure_anthropic",
         ("AZURE_ANTHROPIC_API_KEY",),
         listable=False,
+        registry_models=True,
+        required_env=("AZURE_FOUNDRY_ENDPOINT",),
     ),
 }
 
 
 LISTABLE_PROVIDERS: tuple[str, ...] = tuple(
     tag for tag, spec in PROVIDERS.items() if spec.listable
+)
+
+DISCOVERABLE_PROVIDERS: tuple[str, ...] = tuple(
+    tag for tag, spec in PROVIDERS.items() if spec.listable or spec.registry_models
 )

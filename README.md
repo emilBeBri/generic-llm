@@ -121,11 +121,14 @@ gllm --models | rg flash   # plain lines — pipe to rg/fzf
 Host rows are printed with their `groq:`/`regolo:` prefix, so any line pastes
 straight into `-m`.
 
-`--models` probes each provider's live `models.list()` endpoint and prints the
-**text-generation** models it serves right now (embeddings/audio/image/video are
-filtered out). Azure Foundry is excluded — it's deployment-scoped, not a global
-catalog. A provider with no key (or a failing call) is reported on stderr and
-skipped, never silently dropped.
+`--models` considers only providers configured in the current environment, then
+probes each provider's live `models.list()` endpoint and prints its
+**text-generation** models (embeddings/audio/image/video are filtered out).
+Azure Foundry is deployment-scoped and exposes no equivalent inference endpoint,
+so its rows come from the explicit `-dev` deployment entries in the registry.
+Under `WORK=1`, direct Anthropic/OpenAI discovery is replaced by those configured
+Foundry hosts. An explicitly requested missing or failing provider is still
+reported on stderr rather than disguised as an empty list.
 
 The families below are illustrative orientation, **not** an authoritative list —
 `gllm --models` is the source of truth:

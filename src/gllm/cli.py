@@ -24,18 +24,18 @@ from pathlib import Path
 from . import pricing
 from . import reasoning as reasoning_mod
 from .adapters._capabilities import (
+    native_efforts,
     supports_image,
     supports_pdf,
     supports_reasoning,
     supports_strict_schema,
 )
-from .adapters._capabilities import native_efforts
 from .config import work_env
 from .domain import Attachment, Request
-from .models import wire_id_for
+from .models import MODELS, wire_id_for
 from .ports import LLMProvider
-from .providers import LISTABLE_PROVIDERS, PROVIDERS
-from .routing import effective_model, provider_for
+from .providers import DISCOVERABLE_PROVIDERS, PROVIDERS
+from .routing import WORK_PROVIDER_REDIRECTS, effective_model, provider_for
 
 DEFAULT_MODEL = "deepseek-v4-flash"
 # Config and keys load from this repo's own .env (repo root, beside
@@ -217,38 +217,79 @@ def _build_provider(name: str) -> LLMProvider:
     raise ValueError(f"unknown adapter kind: {kind!r} (provider {name!r})")
 
 
-def _run_models(which: str) -> int:
+def _provider_is_configured(name: str) -> bool:
+    spec = PROVIDERS[name]
+    has_key = any(os.environ.get(env_name) for env_name in spec.api_key_env)
+    has_required = all(os.environ.get(env_name) for env_name in spec.required_env)
+    return has_key and has_required
+
+
+def _configured_model_providers(work: bool) -> tuple[str, ...]:
+    return tuple(
+        name
+        for name in DISCOVERABLE_PROVIDERS
+        if _provider_is_configured(name)
+        and not (work and name in WORK_PROVIDER_REDIRECTS)
+    )
+
+
+def _registered_provider_models(name: str) -> list[str]:
+    return sorted(key for key, spec in MODELS.items() if spec.provider == name)
+
+
+def _run_models(which: str, work: bool = False) -> int:
     """`gllm --models`: print live `provider<TAB>model-id` rows, one per line.
 
     Probes each provider's API for the models it ACTUALLY serves right now —
     the single source of truth — instead of a hand-maintained catalog that
     drifts out of sync (the failure that made an agent declare a live model
-    "retired"). `which == "*"` probes every listable provider; otherwise just
-    the named one. A provider with no key or a failing call gets a loud stderr
-    line and is skipped — never a silent drop.
+    "retired").     With no provider argument, only providers configured in the current
+    environment are queried. WORK mode replaces direct Anthropic/OpenAI with
+    their Azure Foundry hosts. Foundry has no deployment-listing inference API,
+    so its explicit deployment rows come from the model registry; every other
+    provider is probed live.
     """
     if which and which != "*":
-        if which not in LISTABLE_PROVIDERS:
+        if which not in DISCOVERABLE_PROVIDERS:
             print(
                 f"gllm: --models: unknown provider {which!r}; choose from "
-                f"{', '.join(LISTABLE_PROVIDERS)}.",
+                f"{', '.join(DISCOVERABLE_PROVIDERS)}.",
                 file=sys.stderr,
             )
             return 2
-        targets: tuple[str, ...] = (which,)
+        target = WORK_PROVIDER_REDIRECTS.get(which, which) if work else which
+        targets: tuple[str, ...] = (target,)
     else:
-        targets = LISTABLE_PROVIDERS
+        targets = _configured_model_providers(work)
+
+    if not targets:
+        print(
+            "gllm: --models: no configured model providers are available.",
+            file=sys.stderr,
+        )
+        return 1
 
     any_ok = False
     for name in targets:
+        spec = PROVIDERS[name]
+        if not _provider_is_configured(name):
+            print(
+                f"gllm: {name}: skipped (provider is not fully configured)",
+                file=sys.stderr,
+            )
+            continue
         try:
-            models = _build_provider(name).list_models()
+            models = (
+                _registered_provider_models(name)
+                if spec.registry_models
+                else _build_provider(name).list_models()
+            )
         except Exception as e:
             print(f"gllm: {name}: skipped ({type(e).__name__}: {e})", file=sys.stderr)
             continue
         # Host providers namespace their registry keys, so print the key rather
         # than the bare wire id — a printed row should be pasteable into `-m`.
-        prefix = PROVIDERS[name].key_namespace or ""
+        prefix = spec.key_namespace or ""
         for mid in models:
             print(f"{name}\t{prefix}{mid}")
         any_ok = True
@@ -279,7 +320,7 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PROVIDER",
         help=(
-            "List the text-generation models each provider's API serves live "
+            "List text-generation models available through configured providers "
             "(one `provider<TAB>id` per line; pipe to rg/fzf). Optionally "
             "restrict to one: --models gemini. Ignores the prompt."
         ),
@@ -383,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
     # `--models` is a discovery mode: probe live catalogs and exit before any
     # prompt/attachment handling (it needs neither).
     if args.models is not None:
-        return _run_models(args.models)
+        return _run_models(args.models, work_env())
 
     # Resolve -m manually so we can tell whether the user typed it.
     model_was_defaulted = args.model is None

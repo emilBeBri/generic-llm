@@ -26,7 +26,10 @@ from .models import MODELS, spec_for
 
 # Only these two direct providers have an Azure Foundry counterpart; WORK mode
 # redirects them. Gemini/Grok/DeepSeek/GLM have no Azure variant.
-_AZURE_REDIRECTABLE = {"anthropic", "openai"}
+WORK_PROVIDER_REDIRECTS = {
+    "anthropic": "azure_anthropic",
+    "openai": "azure_openai",
+}
 
 
 def provider_for(model: str) -> str:
@@ -104,12 +107,12 @@ def effective_model(model: str, work: bool) -> str:
             return model
         if spec.azure_alias:
             return spec.azure_alias
-        if spec.provider not in _AZURE_REDIRECTABLE:
+        if spec.provider not in WORK_PROVIDER_REDIRECTS:
             return model
         return _guess_azure_deployment(model)
     if model.lower().endswith("-dev"):
         return model
-    if provider_for(model) in _AZURE_REDIRECTABLE:
+    if provider_for(model) in WORK_PROVIDER_REDIRECTS:
         return _guess_azure_deployment(model)
     return model
 

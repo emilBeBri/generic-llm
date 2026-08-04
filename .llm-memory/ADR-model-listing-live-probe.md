@@ -33,14 +33,20 @@ instead of trusting ourselves. Prints greppable `provider<TAB>id` rows; pipe to
 restricts to one. It short-circuits in `main()` before any prompt/attachment
 handling (needs neither).
 
-- **Listable providers**: derived from `ProviderSpec.listable` — anthropic,
-  openai, gemini, grok, deepseek, zai, groq, regolo. Azure
-  Foundry is excluded — it's *deployment*-scoped (you list your deployments, not
-  a global catalog), so it has no equivalent endpoint. See
+- **Configured providers only**: bare `--models` first filters by the key and
+  required endpoint variables declared on `ProviderSpec`. Missing credentials
+  mean unavailable, not an error to print nine times. An explicitly requested
+  provider still fails loudly when it is incomplete or its API fails.
+- **WORK follows actual routing**: in work mode, direct Anthropic/OpenAI
+  discovery is replaced by `azure_anthropic`/`azure_openai`; otherwise the
+  picker can advertise public models that the subsequent call will redirect
+  away from.
+- **Azure deployment exception**: Foundry inference APIs do not expose a live
+  deployment-listing endpoint (the Anthropic SDK explicitly disables
+  `AnthropicFoundry.models`). Azure rows therefore come from the registry's
+  explicit `-dev` deployment entries, gated on the matching Azure key plus
+  `AZURE_FOUNDRY_ENDPOINT`. All other providers remain live API probes. See
   [[GOTCHA-azure-foundry-constraints]].
-- **Loud skip, never silent**: a provider with no key or a failing call prints
-  `gllm: <name>: skipped (...)` to stderr and continues. Matches the project's
-  fail-loud, no-silent-fallback stance.
 - **Text-generation filter**: `list_models()` returns text-gen models only.
   Gemini uses a two-stage filter — the API's `supported_actions` must include
   `generateContent` (drops embeddings), AND a name-based blocklist
