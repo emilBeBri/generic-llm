@@ -371,13 +371,29 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "-r",
         "--reasoning",
-        choices=reasoning_mod.LEVELS,
+        # No argparse `choices`: the valid vocabulary depends on --native-effort,
+        # which argparse cannot consult here. Validated after parsing instead, so
+        # the error names the right vocabulary for the mode actually in use.
         default=None,
+        metavar="LEVEL",
         help=(
             "Reasoning effort: low/medium/high/xhigh. Translated to each "
             "provider's native control. Default: $DEFAULT_EFFORT or provider "
             "default. An explicit value fails on models with no reasoning "
-            "control; a $DEFAULT_EFFORT default is silently dropped on them."
+            "control; a $DEFAULT_EFFORT default is silently dropped on them. "
+            "With --native-effort, takes the model's OWN value instead."
+        ),
+    )
+    p.add_argument(
+        "--native-effort",
+        action="store_true",
+        help=(
+            "Pass -r through as the model's OWN effort value, untranslated. For "
+            "when you need to know exactly what reached the provider: "
+            "benchmarks, effort sweeps, reproducing a run. Off by default — the "
+            "translated ladder is what keeps a script portable across models. "
+            "Requires an explicit -r, and rejects a value the model does not "
+            "have (see --models for each model's vocabulary)."
         ),
     )
     p.add_argument(
@@ -458,6 +474,17 @@ def main(argv: list[str] | None = None) -> int:
     # silently dropped on models that can't reason (see the capability gate below).
     reasoning_was_defaulted = False
     if args.reasoning is None:
+        # --native-effort is a request for exactness, so it will not inherit an
+        # ambient default: $DEFAULT_EFFORT is a portable gllm rung, and silently
+        # feeding it to a provider as a native value is precisely the confusion
+        # the flag exists to remove.
+        if args.native_effort:
+            print(
+                "gllm: --native-effort needs an explicit -r/--reasoning "
+                "(it will not inherit $DEFAULT_EFFORT).",
+                file=sys.stderr,
+            )
+            return 2
         env_reasoning = os.environ.get("DEFAULT_EFFORT")
         if env_reasoning:
             if env_reasoning not in reasoning_mod.LEVELS:
@@ -470,6 +497,19 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             args.reasoning = env_reasoning
             reasoning_was_defaulted = True
+    elif not args.native_effort and args.reasoning not in reasoning_mod.LEVELS:
+        # Validated here rather than by argparse `choices`, because the valid
+        # vocabulary depends on --native-effort. Name the flag in the message:
+        # someone typing `-r max` wants the model's top rung and has just found
+        # the exact case --native-effort was added for.
+        expected = ", ".join(reasoning_mod.LEVELS)
+        print(
+            f"gllm: -r/--reasoning must be one of {expected}; got "
+            f"{args.reasoning!r}. To pass a provider's own value instead "
+            f"(e.g. 'max'), add --native-effort.",
+            file=sys.stderr,
+        )
+        return 2
 
     # WORK mode redirects direct Anthropic/OpenAI models to their Azure Foundry
     # `-dev` deployment. Everything downstream sees the effective name.
@@ -497,19 +537,33 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     if args.reasoning:
-        # Normalise the rung onto this model's OWN vocabulary. `xhigh` means
-        # "the most this model has", so it can land on a differently-named value
-        # (DeepSeek and GLM call their top rung `max`). Announce it when that
-        # happens — a level silently meaning something else is the sort of quiet
-        # degradation gllm refuses everywhere else. Silent on a pass-through.
         native = native_efforts(provider_name, args.model)
-        wire_effort = reasoning_mod.resolve_effort(args.reasoning, native)
-        if wire_effort != args.reasoning and not args.quiet_effort:
-            print(
-                f"gllm: -r {args.reasoning} -> {wire_effort!r} "
-                f"({args.model} offers: {', '.join(native)})",
-                file=sys.stderr,
-            )
+        if args.native_effort:
+            # No translation: the value goes to the provider exactly as typed.
+            # It must therefore be one this model actually has — refusing here
+            # beats letting the provider reject it after the payload is sent.
+            if args.reasoning not in native:
+                print(
+                    f"gllm: --native-effort: {args.model} has no effort "
+                    f"{args.reasoning!r}; it offers: {', '.join(native)}.",
+                    file=sys.stderr,
+                )
+                return 2
+            wire_effort = args.reasoning
+        else:
+            # Normalise the rung onto this model's OWN vocabulary. `xhigh` means
+            # "the most this model has", so it can land on a differently-named
+            # value (DeepSeek and GLM call their top rung `max`). Announce it
+            # when that happens — a level silently meaning something else is the
+            # sort of quiet degradation gllm refuses everywhere else. Silent on
+            # a pass-through.
+            wire_effort = reasoning_mod.resolve_effort(args.reasoning, native)
+            if wire_effort != args.reasoning and not args.quiet_effort:
+                print(
+                    f"gllm: -r {args.reasoning} -> {wire_effort!r} "
+                    f"({args.model} offers: {', '.join(native)})",
+                    file=sys.stderr,
+                )
 
     if model_was_defaulted:
         print(
