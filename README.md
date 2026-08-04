@@ -116,6 +116,7 @@ vice-versa) — ask the API:
 gllm --models              # every provider with a key: one `provider<TAB>key` per line
 gllm --models gemini       # just one provider
 gllm --models | rg flash   # plain lines — pipe to rg/fzf
+gllm --models --model-capabilities  # append reasoning|default for picker UIs
 ```
 
 Host rows are printed with their `groq:`/`regolo:` prefix, so any line pastes
@@ -129,6 +130,10 @@ so its rows come from the explicit `-dev` deployment entries in the registry.
 Under `WORK=1`, direct Anthropic/OpenAI discovery is replaced by those configured
 Foundry hosts. An explicitly requested missing or failing provider is still
 reported on stderr rather than disguised as an empty list.
+
+`--model-capabilities` preserves the first two fields and appends `reasoning`
+when explicit `-r` is valid, otherwise `default`. Picker UIs use this to avoid
+offering impossible effort choices for models such as `gpt-4.1-nano-dev`.
 
 The families below are illustrative orientation, **not** an authoritative list —
 `gllm --models` is the source of truth:

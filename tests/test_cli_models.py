@@ -50,6 +50,18 @@ def test_work_listing_prints_registered_azure_deployments(monkeypatch, capsys):
     assert output.err == ""
 
 
+def test_capability_listing_marks_reasoning_and_default_models(monkeypatch, capsys):
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test")
+    monkeypatch.setenv("AZURE_FOUNDRY_ENDPOINT", "https://example.invalid")
+
+    assert cli._run_models("*", work=True, include_capabilities=True) == 0
+    output = capsys.readouterr()
+    assert "azure_openai\tgpt-5.6-sol-dev\treasoning\n" in output.out
+    assert "azure_openai\tgpt-4.1-nano-dev\tdefault\n" in output.out
+    assert output.err == ""
+
+
 def test_explicit_direct_provider_follows_work_redirect(monkeypatch, capsys):
     _clear_provider_env(monkeypatch)
     monkeypatch.setenv("AZURE_ANTHROPIC_API_KEY", "test")

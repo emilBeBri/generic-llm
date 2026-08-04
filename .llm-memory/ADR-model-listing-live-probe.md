@@ -57,6 +57,11 @@ handling (needs neither).
   audio/sora/imagine/lyria/robotics/computer-use/moderation/…). Heuristic by
   necessity — a false negative hides a row from `--models` but can never block a
   real `generate()` call, since dispatch never consults the filter.
+- **Capability-bearing picker mode**: `--models --model-capabilities` preserves
+  the normal `provider<TAB>key` fields and appends `reasoning` or `default`.
+  This is derived through the same `supports_reasoning(provider, model)` gate
+  used before invocation, so a UI cannot fabricate `-r` rows for knobless
+  models such as `gpt-4.1-nano-dev`.
 
 ## Mechanics
 

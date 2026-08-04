@@ -237,7 +237,11 @@ def _registered_provider_models(name: str) -> list[str]:
     return sorted(key for key, spec in MODELS.items() if spec.provider == name)
 
 
-def _run_models(which: str, work: bool = False) -> int:
+def _run_models(
+    which: str,
+    work: bool = False,
+    include_capabilities: bool = False,
+) -> int:
     """`gllm --models`: print live `provider<TAB>model-id` rows, one per line.
 
     Probes each provider's API for the models it ACTUALLY serves right now —
@@ -291,7 +295,11 @@ def _run_models(which: str, work: bool = False) -> int:
         # than the bare wire id — a printed row should be pasteable into `-m`.
         prefix = spec.key_namespace or ""
         for mid in models:
-            print(f"{name}\t{prefix}{mid}")
+            key = f"{prefix}{mid}"
+            fields = [name, key]
+            if include_capabilities:
+                fields.append("reasoning" if supports_reasoning(name, key) else "default")
+            print("\t".join(fields))
         any_ok = True
     return 0 if any_ok else 1
 
@@ -323,6 +331,14 @@ def _parser() -> argparse.ArgumentParser:
             "List text-generation models available through configured providers "
             "(one `provider<TAB>id` per line; pipe to rg/fzf). Optionally "
             "restrict to one: --models gemini. Ignores the prompt."
+        ),
+    )
+    p.add_argument(
+        "--model-capabilities",
+        action="store_true",
+        help=(
+            "With --models, append a capability field: `reasoning` when the "
+            "model accepts -r, otherwise `default`."
         ),
     )
     p.add_argument(
@@ -424,7 +440,10 @@ def main(argv: list[str] | None = None) -> int:
     # `--models` is a discovery mode: probe live catalogs and exit before any
     # prompt/attachment handling (it needs neither).
     if args.models is not None:
-        return _run_models(args.models, work_env())
+        return _run_models(args.models, work_env(), args.model_capabilities)
+    if args.model_capabilities:
+        print("gllm: --model-capabilities requires --models.", file=sys.stderr)
+        return 2
 
     # Resolve -m manually so we can tell whether the user typed it.
     model_was_defaulted = args.model is None
