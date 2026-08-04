@@ -47,6 +47,44 @@ The invariant that makes this safe to leave in a script: **`-r low` is always th
 - **Token/temperature side-effects when a level is set:** Anthropic & OpenAI bump `max_tokens`/`max_output_tokens` (so reasoning doesn't starve the answer) and **drop `temperature`** (reasoning models reject a custom one). The direct Anthropic adapter also switches to `messages.stream()` when thinking is on (long generations outrun the non-streaming socket timeout). Gemini keeps temperature.
 - **The gate asks ONE question: does this model have an effort knob at all?** Since every rung always resolves onto a non-empty vocabulary, "a level this model cannot take" no longer exists, and the short-lived per-level refusal (and the ambient-effort clamp that went with it) were both deleted. What remains: an explicit `-r` on a knobless model exits 2; an ambient `$DEFAULT_EFFORT` is dropped there instead, so a global `DEFAULT_EFFORT=low` never breaks a pipe to `gpt-4.1` or `grok-build-0.1`.
 
+## Escape hatch: `--native-effort` (2026-08-04)
+
+The normalised ladder is right for portability and wrong when effort is the
+thing under study. Because `xhigh` is *defined* as "the most this model has", it
+resolves to `max` on DeepSeek, GLM, Claude-5 and GPT-5.6 — so a benchmark
+comparing "xhigh vs max" silently runs one arm twice, and no output distinguishes
+them. That happened: a book-agent effort sweep was designed around `high` vs
+`max` before anyone noticed `-r max` is not even accepted and `xhigh` already
+meant `max`.
+
+`--native-effort` passes `-r` through as the model's own value, untranslated.
+Off by default. Consequences worth remembering:
+
+- **argparse `choices` had to go.** The valid vocabulary depends on the flag,
+  which argparse cannot consult, so `-r` is validated after parsing. The payoff:
+  the error can name the right vocabulary for the mode in use, and a plain
+  `-r max` now tells the user how to get what they obviously wanted.
+- **A value the model lacks is refused before the payload is built.**
+  `-r xhigh --native-effort` fails on `deepseek-v4-flash` (ladder `high|max`) and
+  succeeds on `claude-opus-5`, which really has an `xhigh` below its `max`. That
+  asymmetry IS the confusion the flag removes, so it is asserted in tests.
+- **It will not inherit `$DEFAULT_EFFORT`** — an ambient portable rung fed to a
+  provider as a native value would recreate the ambiguity.
+- The knobless-model gate is unchanged.
+
+`Request` carries both `reasoning` (the rung asked for) and `wire_effort` (what
+is actually sent); only the latter changes under this flag. Assert on
+`wire_effort` when testing what reached the provider.
+
+**Agent guidance:** before running a benchmark, an effort sweep, or anything
+where the effort must be reported exactly, say that the default ladder makes
+results ambiguous and ask whether to use `--native-effort` — *before* spending
+tokens. For ordinary one-shot calls the default is correct and this never comes
+up. This belongs in the `gllm-cli` skill too; the skill dir is read-only, so it
+has to be applied by hand.
+
+Tests: `tests/test_cli_native_effort.py`.
+
 ## Reasoning is fully decoupled from WORK
 
 Earlier this adapter had `WORK=1` force-max thinking on Azure Anthropic (`_force_work_env_thinking`). That was wrong — `WORK` is a provider-routing toggle (direct vs Azure, via `routing.effective_model`), not a reasoning lever. As of 2026-06-16 the forced-thinking mechanism is **removed**; reasoning is `--reasoning` only, on every adapter equally. See [[GOTCHA-azure-foundry-constraints]].
