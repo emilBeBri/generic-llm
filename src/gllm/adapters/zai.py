@@ -34,7 +34,17 @@ from ._capabilities import (
     is_text_generation_model,
 )
 
-ZAI_BASE_URL = "https://api.z.ai/api/paas/v4/"
+#: Z.AI serves pay-as-you-go credit and coding-plan subscriptions from DIFFERENT
+#: endpoints, and one key is valid on both — so the wrong base URL does not fail
+#: as auth. A coding-plan key called here returns `429 code 1113: Insufficient
+#: balance or no resource package`, which reads as "you are out of money" rather
+#: than "wrong endpoint". Override with ZAI_BASE_URL when the quota lives on the
+#: coding plan: https://api.z.ai/api/coding/paas/v4/
+ZAI_DEFAULT_BASE_URL = "https://api.z.ai/api/paas/v4/"
+
+
+def zai_base_url() -> str:
+    return os.environ.get("ZAI_BASE_URL") or ZAI_DEFAULT_BASE_URL
 
 
 def _image_part(a: Attachment) -> dict:
@@ -52,7 +62,7 @@ class ZaiProvider(LLMProvider):
         key = api_key or os.environ.get("ZAI_API_KEY")
         if not key:
             raise RuntimeError("ZAI_API_KEY is not set")
-        self.client = OpenAI(api_key=key, base_url=ZAI_BASE_URL, max_retries=3)
+        self.client = OpenAI(api_key=key, base_url=zai_base_url(), max_retries=3)
 
     def list_models(self) -> list[str]:
         return sorted(
