@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 
+from ..config import resolve_base_url
 from ..domain import Request, Response
 from .openai import OpenAIProvider
 
@@ -27,7 +28,11 @@ class GrokProvider(OpenAIProvider):
         key = api_key or os.environ.get("XAI_API_KEY")
         if not key:
             raise RuntimeError("XAI_API_KEY is not set")
-        super().__init__(api_key=key, base_url=GROK_BASE_URL, name="grok")
+        super().__init__(
+            api_key=key,
+            base_url=resolve_base_url("grok", GROK_BASE_URL),
+            name="grok",
+        )
 
     def generate(self, request: Request) -> Response:
         # xAI's Responses API accepts input_image but has no input_file

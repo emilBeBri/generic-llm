@@ -18,6 +18,7 @@ import os
 
 from openai import OpenAI
 
+from ..config import resolve_base_url
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..usage import from_kimi
@@ -56,7 +57,11 @@ class KimiProvider(LLMProvider):
         )
         if not key:
             raise RuntimeError("MOONSHOT_API_KEY or KIMI_API_KEY is not set")
-        self.client = OpenAI(api_key=key, base_url=KIMI_BASE_URL, max_retries=3)
+        self.client = OpenAI(
+            api_key=key,
+            base_url=resolve_base_url("kimi", KIMI_BASE_URL),
+            max_retries=3,
+        )
 
     def list_models(self) -> list[str]:
         return sorted(

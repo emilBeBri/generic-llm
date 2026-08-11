@@ -29,6 +29,7 @@ import os
 
 from openai import OpenAI
 
+from ..config import resolve_base_url
 from ..domain import Request, Response
 from ..ports import LLMProvider
 from ..usage import from_deepseek
@@ -44,7 +45,11 @@ class DeepSeekProvider(LLMProvider):
         key = api_key or os.environ.get("DEEPSEEK_API_KEY")
         if not key:
             raise RuntimeError("DEEPSEEK_API_KEY is not set")
-        self.client = OpenAI(api_key=key, base_url=DEEPSEEK_BASE_URL, max_retries=3)
+        self.client = OpenAI(
+            api_key=key,
+            base_url=resolve_base_url("deepseek", DEEPSEEK_BASE_URL),
+            max_retries=3,
+        )
 
     def list_models(self) -> list[str]:
         # OpenAI-compatible catalog endpoint; apply the same text-generation

@@ -32,6 +32,7 @@ import os
 
 from openai import OpenAI
 
+from ..config import resolve_base_url
 from ..domain import Attachment, Request, Response
 from ..models import caps_for
 from ..ports import LLMProvider
@@ -50,7 +51,13 @@ class OpenAICompatProvider(LLMProvider):
         if not key:
             expected = " or ".join(spec.api_key_env)
             raise RuntimeError(f"{expected} is not set")
-        self.client = OpenAI(api_key=key, base_url=spec.base_url, max_retries=3)
+        # One edit covers every openai_compat host (groq, regolo, ...), because
+        # they all resolve their endpoint through the shared ProviderSpec.
+        self.client = OpenAI(
+            api_key=key,
+            base_url=resolve_base_url(spec.tag, spec.base_url),
+            max_retries=3,
+        )
 
     def list_models(self) -> list[str]:
         return sorted(

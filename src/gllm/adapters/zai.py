@@ -24,6 +24,7 @@ import os
 
 from openai import OpenAI
 
+from ..config import resolve_base_url
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..usage import from_openai_chat
@@ -44,7 +45,10 @@ ZAI_DEFAULT_BASE_URL = "https://api.z.ai/api/paas/v4/"
 
 
 def zai_base_url() -> str:
-    return os.environ.get("ZAI_BASE_URL") or ZAI_DEFAULT_BASE_URL
+    return (
+        resolve_base_url("zai", ZAI_DEFAULT_BASE_URL, legacy_env="ZAI_BASE_URL")
+        or ZAI_DEFAULT_BASE_URL
+    )
 
 
 def _image_part(a: Attachment) -> dict:
