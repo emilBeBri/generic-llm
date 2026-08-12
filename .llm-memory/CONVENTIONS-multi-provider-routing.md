@@ -22,7 +22,7 @@ How `gllm` picks a provider for a model, and how OpenAI-compatible backends are 
 
 Why it had to go: the ladder assumes a model name names its *vendor*, but hosts serve other labs' models — `groq:deepseek-r1-distill-llama-70b` would have routed to `api.deepseek.com`, and `groq:qwen/qwen3-32b` matched nothing and fell through to the OpenAI catch-all. The host-namespace branch at the top of the fallback is a patch so it stops misfiring; the real fix is the registry.
 
-`cli._build_provider` now dispatches on `PROVIDERS[name].adapter_kind` (a string key), still via lazily-imported adapter classes so a missing SDK only breaks its own provider.
+`cli._build_provider` now dispatches on `PROVIDERS[name].adapter_kind` (a string key), still via lazily-imported adapter classes so a missing SDK only breaks its own provider. As adapters move to the stdlib transport ([[ADR-stdlib-http-transport]]) the "missing SDK" half of that rationale dissolves, but keep the lazy import: it is what holds the non-network paths (`--help`, `--models`) at ~87 ms.
 
 `routing.effective_model(model, work)` is the WORK-mode Azure redirect. It reads `ModelSpec.azure_alias` instead of appending `-dev`; a registered Anthropic/OpenAI model with no alias still gets the append, but loudly. `cli.main` calls it right after resolving `-m`. WORK is **only** this routing toggle — it has nothing to do with reasoning (see [[GOTCHA-azure-foundry-constraints]] and [[ADR-reasoning-effort-ladder]]).
 

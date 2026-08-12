@@ -1,7 +1,7 @@
 """DeepSeek adapter.
 
 DeepSeek's API is OpenAI-compatible (chat completions) at api.deepseek.com,
-so we drive it with the `openai` SDK pointed at a different base_url. Models:
+so we POST the chat-completions body straight there via `gllm._http`. Models:
 `deepseek-v4-pro`, `deepseek-v4-flash`.
 
 Thinking: the v4 models reason by default and emit a `reasoning_content`
@@ -27,8 +27,7 @@ from __future__ import annotations
 
 import os
 
-from openai import OpenAI
-
+from .._http import get_json, post_json, wrap
 from ..config import resolve_base_url
 from ..domain import Request, Response
 from ..ports import LLMProvider
@@ -45,19 +44,19 @@ class DeepSeekProvider(LLMProvider):
         key = api_key or os.environ.get("DEEPSEEK_API_KEY")
         if not key:
             raise RuntimeError("DEEPSEEK_API_KEY is not set")
-        self.client = OpenAI(
-            api_key=key,
-            base_url=resolve_base_url("deepseek", DEEPSEEK_BASE_URL),
-            max_retries=3,
-        )
+        self.base_url = (
+            resolve_base_url("deepseek", DEEPSEEK_BASE_URL) or DEEPSEEK_BASE_URL
+        ).rstrip("/")
+        self.headers = {"Authorization": f"Bearer {key}"}
 
     def list_models(self) -> list[str]:
         # OpenAI-compatible catalog endpoint; apply the same text-generation
         # filter for consistency (DeepSeek's catalog is all chat today).
+        catalog = get_json(f"{self.base_url}/models", self.headers)
         return sorted(
-            m.id
-            for m in self.client.models.list()
-            if is_text_generation_model(m.id)
+            m["id"]
+            for m in catalog.get("data", [])
+            if is_text_generation_model(m["id"])
         )
 
     def generate(self, request: Request) -> Response:
@@ -99,16 +98,19 @@ class DeepSeekProvider(LLMProvider):
             kwargs["response_format"] = {"type": "json_object"}
 
         if reasoning_on:
-            # `thinking` is a non-OpenAI param -> extra_body; `reasoning_effort`
-            # is a recognised SDK kwarg so it goes top-level. The value is
-            # already resolved to DeepSeek's own vocabulary (high|max) by the
-            # CLI — see reasoning.resolve_effort.
-            kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+            # Both go top-level in the request body. Under the SDK `thinking`
+            # needed `extra_body` to survive the client's kwarg validation, but
+            # extra_body was never a wire concept — it merged into this same
+            # object. The effort value is already resolved to DeepSeek's own
+            # vocabulary (high|max) by the CLI — see reasoning.resolve_effort.
+            kwargs["thinking"] = {"type": "enabled"}
             kwargs["reasoning_effort"] = request.wire_effort
 
-        resp = self.client.chat.completions.create(**kwargs)
+        resp = wrap(post_json(f"{self.base_url}/chat/completions", self.headers, kwargs))
 
-        text = resp.choices[0].message.content or ""
+        # `content` is null on a reasoning-only response; DeepSeek's
+        # reasoning_content is deliberately discarded (see module docstring).
+        text = getattr(resp.choices[0].message, "content", None) or ""
 
         return Response(
             text=text,
