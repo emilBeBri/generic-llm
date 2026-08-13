@@ -11,7 +11,7 @@ Responses API, which these hosts do not speak (same reasoning as the Z.AI
 adapter — see .llm-memory/CONVENTIONS-zai-glm-adapter.md).
 
 Host quirks are config, not branches:
-- `ProviderSpec.extra_body` is merged into every call. Regolo NEEDS
+- `ProviderSpec.extra_body` is merged into every request body. Regolo NEEDS
   `disable_fallbacks`: without it the host silently answers with a DIFFERENT
   model than you asked for, which makes model identity, cost accounting and
   every capability gate a lie.
@@ -30,8 +30,7 @@ from __future__ import annotations
 import base64
 import os
 
-from openai import OpenAI
-
+from .._http import get_json, post_json, wrap
 from ..config import resolve_base_url
 from ..domain import Attachment, Request, Response
 from ..models import caps_for
@@ -59,17 +58,17 @@ class OpenAICompatProvider(LLMProvider):
             raise RuntimeError(f"{expected} is not set")
         # One edit covers every openai_compat host (groq, regolo, ...), because
         # they all resolve their endpoint through the shared ProviderSpec.
-        self.client = OpenAI(
-            api_key=key,
-            base_url=resolve_base_url(spec.tag, spec.base_url),
-            max_retries=3,
-        )
+        self.base_url = (
+            resolve_base_url(spec.tag, spec.base_url) or spec.base_url
+        ).rstrip("/")
+        self.headers = {"Authorization": f"Bearer {key}"}
 
     def list_models(self) -> list[str]:
+        catalog = get_json(f"{self.base_url}/models", self.headers)
         return sorted(
-            m.id
-            for m in self.client.models.list()
-            if is_text_generation_model(m.id)
+            m["id"]
+            for m in catalog.get("data", [])
+            if is_text_generation_model(m["id"])
         )
 
     def generate(self, request: Request) -> Response:
@@ -117,15 +116,19 @@ class OpenAICompatProvider(LLMProvider):
             kwargs["reasoning_effort"] = request.wire_effort
             if caps.thinking_dialect == "compat_thinking_flag":
                 extra_body["thinking"] = True
-        if extra_body:
-            kwargs["extra_body"] = extra_body
+        # Merged into the body itself, which is all `extra_body` ever meant —
+        # it was the SDK's escape hatch for non-OpenAI keys, not a wire concept.
+        # Regolo's `disable_fallbacks` must land here or the host may silently
+        # answer with a different model than the one asked for.
+        kwargs.update(extra_body)
 
-        resp = self.client.chat.completions.create(**kwargs)
+        resp = wrap(
+            post_json(f"{self.base_url}/chat/completions", self.headers, kwargs)
+        )
 
-        message = resp.choices[0].message
         # Chain-of-thought arrives in `reasoning_content` on these hosts. gllm is
         # one-shot and prints the answer only, so it is deliberately discarded.
-        text = message.content or ""
+        text = getattr(resp.choices[0].message, "content", None) or ""
 
         return Response(
             text=text,

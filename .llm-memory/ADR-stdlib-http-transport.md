@@ -59,7 +59,15 @@ Verified against the real API, through the jail's loopback key broker:
 
 ## Migration status and the note this will falsify
 
-Done: `deepseek`. Remaining: `grok`, `zai`, `kimi`, `openai_compat`, `openai`, `azure_openai`, `anthropic`, `azure_anthropic`, `gemini`. Anthropic additionally needs an SSE line reader in `_http` (it streams only to dodge socket timeouts on long thinking, then takes the final message). **`gemini` is the only real rewrite** — it is genuinely coupled to `types.GenerateContentConfig` / `types.ThinkingConfig` / `types.Part.from_bytes` / `resp.text`, and must be redone against the REST `:generateContent` endpoint. It is also the biggest single win at ~1.45 s.
+Done: `deepseek`, `zai`, `kimi`, `openai_compat`. Remaining: `openai`, `azure_openai`, `grok`, `anthropic`, `azure_anthropic`, `gemini`.
+
+**`grok` cannot be converted on its own** — it subclasses `OpenAIProvider` and inherits its Responses-API `generate`, so it converts only when `openai.py` does. Same for `azure_openai`. Worth knowing before planning a batch: the "OpenAI-compatible chat" adapters are independent of each other, the Responses-API ones are one unit.
+
+Per-adapter gotchas found while converting the chat batch:
+- **`zai`**: `ZAI_DEFAULT_BASE_URL` ends in `/`, so the join needs `rstrip("/")` or you POST to `//chat/completions`.
+- **`kimi`**: k2.6's binary thinking block lived in `_reasoning_kwargs` as `{"extra_body": {"thinking": ...}}` — the hoist has to happen inside that helper, not at the call site.
+- **`openai_compat`**: `ProviderSpec.extra_body` becomes `kwargs.update(extra_body)`. Regolo's `disable_fallbacks` MUST survive that or the host may silently answer with a different model, which makes model identity and cost accounting a lie. It now has a test.
+- **`ProviderSpec.image_url_format_field` is currently unreachable through `generate`**: no registered regolo row has `supports_vision`, so `_user_content` refuses every one of them first. The flag is live config awaiting a model row. Tested at the unit instead. Anthropic additionally needs an SSE line reader in `_http` (it streams only to dodge socket timeouts on long thinking, then takes the final message). **`gemini` is the only real rewrite** — it is genuinely coupled to `types.GenerateContentConfig` / `types.ThinkingConfig` / `types.Part.from_bytes` / `resp.text`, and must be redone against the REST `:generateContent` endpoint. It is also the biggest single win at ~1.45 s.
 
 When `openai`/`anthropic`/`gemini` convert, [[ADR-base-url-env-override]]'s claim that those three "need nothing, their SDKs read their own base-URL env vars" becomes **false** — they will all need `config.resolve_base_url`. Correct that note in the same commit.
 

@@ -1,7 +1,7 @@
 """Moonshot Kimi adapter.
 
-Kimi speaks OpenAI-compatible Chat Completions at api.moonshot.ai, but its
-reasoning controls differ by model family:
+Kimi speaks OpenAI-compatible Chat Completions at api.moonshot.ai (POSTed via
+`gllm._http`), but its reasoning controls differ by model family:
 
 - kimi-k3: always reasons; optional reasoning_effort in low|high|max.
 - kimi-k2.7-code*: always reasons and rejects reasoning controls.
@@ -16,8 +16,7 @@ from __future__ import annotations
 import base64
 import os
 
-from openai import OpenAI
-
+from .._http import get_json, post_json, wrap
 from ..config import resolve_base_url
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
@@ -62,17 +61,17 @@ class KimiProvider(LLMProvider):
         )
         if not key:
             raise RuntimeError("MOONSHOT_API_KEY or KIMI_API_KEY is not set")
-        self.client = OpenAI(
-            api_key=key,
-            base_url=resolve_base_url("kimi", KIMI_BASE_URL),
-            max_retries=3,
-        )
+        self.base_url = (
+            resolve_base_url("kimi", KIMI_BASE_URL) or KIMI_BASE_URL
+        ).rstrip("/")
+        self.headers = {"Authorization": f"Bearer {key}"}
 
     def list_models(self) -> list[str]:
+        catalog = get_json(f"{self.base_url}/models", self.headers)
         return sorted(
-            model.id
-            for model in self.client.models.list()
-            if is_text_generation_model(model.id)
+            m["id"]
+            for m in catalog.get("data", [])
+            if is_text_generation_model(m["id"])
         )
 
     def generate(self, request: Request) -> Response:
@@ -106,8 +105,10 @@ class KimiProvider(LLMProvider):
             kwargs["response_format"] = {"type": "json_object"}
         kwargs.update(self._reasoning_kwargs(request))
 
-        response = self.client.chat.completions.create(**kwargs)
-        text = response.choices[0].message.content or ""
+        response = wrap(
+            post_json(f"{self.base_url}/chat/completions", self.headers, kwargs)
+        )
+        text = getattr(response.choices[0].message, "content", None) or ""
         return Response(
             text=text,
             model=request.model or response.model,
@@ -128,13 +129,9 @@ class KimiProvider(LLMProvider):
             )
         if _is_k3(request.model):
             return {"reasoning_effort": request.wire_effort}
-        return {
-            "extra_body": {
-                "thinking": {
-                    "type": "enabled",
-                },
-            },
-        }
+        # Top-level on the wire; `extra_body` only ever existed to get this
+        # past the SDK's kwarg validation.
+        return {"thinking": {"type": "enabled"}}
 
     @staticmethod
     def _user_content(request: Request):

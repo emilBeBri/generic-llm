@@ -1,12 +1,12 @@
 """Z.AI / GLM adapter.
 
 Zhipu's GLM family speaks the OpenAI Chat Completions wire format at
-`api.z.ai`, so we drive it with the `openai` SDK pointed at a different
-base_url — the same standalone shape as the DeepSeek adapter (NOT an
-OpenAIProvider subclass: that one routes `glm-*` to the Responses API, which
-Z.AI does not speak). GLM-specific handling on top:
+`api.z.ai`, so we POST the chat-completions body there via `gllm._http` — the
+same standalone shape as the DeepSeek adapter (NOT an OpenAIProvider subclass:
+that one routes `glm-*` to the Responses API, which Z.AI does not speak).
+GLM-specific handling on top:
 
-- Deep thinking via `extra_body={"thinking": {"type": "enabled"}}`. The
+- Deep thinking via a top-level `thinking: {"type": "enabled"}`. The
   `reasoning_effort` knob is honoured ONLY by glm-5.2+ (gated). Omitting
   `--reasoning` leaves thinking at the provider default (on for the 4.5+ line).
 - Vision lives in SEPARATE models (glm-5v*, glm-4.6v*, glm-4.5v, glm-ocr) that
@@ -22,8 +22,7 @@ from __future__ import annotations
 import base64
 import os
 
-from openai import OpenAI
-
+from .._http import get_json, post_json, wrap
 from ..config import resolve_base_url
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
@@ -72,13 +71,17 @@ class ZaiProvider(LLMProvider):
         key = api_key or os.environ.get("ZAI_API_KEY")
         if not key:
             raise RuntimeError("ZAI_API_KEY is not set")
-        self.client = OpenAI(api_key=key, base_url=zai_base_url(), max_retries=3)
+        # The default base URL carries a trailing slash; rstrip keeps the join
+        # from producing `//chat/completions`.
+        self.base_url = zai_base_url().rstrip("/")
+        self.headers = {"Authorization": f"Bearer {key}"}
 
     def list_models(self) -> list[str]:
+        catalog = get_json(f"{self.base_url}/models", self.headers)
         return sorted(
-            m.id
-            for m in self.client.models.list()
-            if is_text_generation_model(m.id)
+            m["id"]
+            for m in catalog.get("data", [])
+            if is_text_generation_model(m["id"])
         )
 
     def generate(self, request: Request) -> Response:
@@ -120,15 +123,16 @@ class ZaiProvider(LLMProvider):
                     f"GLM model {request.model!r} does not support thinking; "
                     f"drop --reasoning."
                 )
-            # `thinking` is a non-OpenAI param -> extra_body; `reasoning_effort`
-            # is a recognised SDK kwarg so it goes top-level.
-            kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+            # Both top-level. `thinking` needed `extra_body` to get past the
+            # SDK's kwarg validation, but extra_body was never a wire concept —
+            # it merged into this same request object.
+            kwargs["thinking"] = {"type": "enabled"}
             if glm_supports_reasoning_effort(request.model):
                 kwargs["reasoning_effort"] = request.wire_effort
 
-        resp = self.client.chat.completions.create(**kwargs)
+        resp = wrap(post_json(f"{self.base_url}/chat/completions", self.headers, kwargs))
 
-        text = resp.choices[0].message.content or ""
+        text = getattr(resp.choices[0].message, "content", None) or ""
 
         return Response(
             text=text,
