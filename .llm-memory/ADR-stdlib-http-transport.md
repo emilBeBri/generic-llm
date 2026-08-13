@@ -63,6 +63,27 @@ Done: `deepseek`, `zai`, `kimi`, `openai_compat`. Remaining: `openai`, `azure_op
 
 **`grok` cannot be converted on its own** — it subclasses `OpenAIProvider` and inherits its Responses-API `generate`, so it converts only when `openai.py` does. Same for `azure_openai`. Worth knowing before planning a batch: the "OpenAI-compatible chat" adapters are independent of each other, the Responses-API ones are one unit.
 
+## Verifying a hoisted key needs a DIFFERENTIAL, not a successful call
+
+The `extra_body` hoists are the risky part of every conversion, and a single successful call cannot verify one: a silently-dropped key looks exactly like an honoured one. DeepSeek happened to give a positive signal (`reasoning_tokens: 6`), but Z.AI's `reasoning_tokens` reads 0 even with thinking on, so the same trick was unavailable.
+
+What works: send the same request twice through `_http`, differing **only** in the hoisted key, and diff the replies. On `glm-4.5-flash` 2026-08-13:
+
+| `thinking.type` | `reasoning_content` | completion_tokens | answer to 23*47 |
+|---|---|---|---|
+| `enabled` | 847 chars | 300 (hit the cap) | `''` |
+| `disabled` | 0 chars | 3 | `1081` |
+
+So top-level `thinking` **is** honoured by Z.AI. Use this shape for the remaining conversions rather than trusting a 200.
+
+Incidental but useful: the `enabled` row is the output-starvation of [[ADR-output-budget-resolution]] reproduced on a third provider — 300 tokens of budget, all of it spent on the trace, **empty** answer.
+
+## GOTCHA: `Retry-After` can stall a one-shot CLI for three minutes in silence
+
+`_sleep_before_retry` honours `Retry-After` up to 60s, and `DEFAULT_RETRIES` is 3 — so a rate-limited call can sleep ~180s while printing nothing. Found the hard way: the first attempt at the probe above was killed at a 2-minute timeout, and the API was never slow, my own backoff was. Z.AI answers `429 code 1302` (rate limit) distinctly from `429 code 1113` (insufficient balance / wrong endpoint), and 1302 is what triggered it.
+
+Unfixed as of this note. The shape of a fix: cap total retry wall time, and say something on stderr before the first sleep — silence is the actual defect, not the waiting. Pass `max_retries=0` when probing so the backoff cannot eat the budget before an error is visible.
+
 Per-adapter gotchas found while converting the chat batch:
 - **`zai`**: `ZAI_DEFAULT_BASE_URL` ends in `/`, so the join needs `rstrip("/")` or you POST to `//chat/completions`.
 - **`kimi`**: k2.6's binary thinking block lived in `_reasoning_kwargs` as `{"extra_body": {"thinking": ...}}` — the hoist has to happen inside that helper, not at the call site.
