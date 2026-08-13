@@ -5,12 +5,13 @@ description = "gllm — a minimal Unix-pipe-friendly CLI for calling LLMs (Anthr
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # Shrinking on purpose — see .llm-memory/ADR-stdlib-http-transport.md.
-    # `openai` is gone: every adapter that spoke Chat Completions or Responses
-    # now POSTs through gllm._http, which cut per-call startup from ~890ms to
-    # ~110ms. These two remain only because their adapters are not converted yet.
-    "anthropic>=0.76.0",
-    "google-genai>=1.59.0",
+    # No vendor SDKs. Every provider is JSON over HTTPS through `gllm._http`
+    # (stdlib `http.client`), which cut per-call startup from ~0.9-1.5s to
+    # ~0.11s: `import anthropic` alone built 462 pydantic classes and loaded
+    # 1247 modules to round-trip a dict the adapters already had. The full
+    # reasoning, and the per-provider wire gotchas that came out of it, are in
+    # .llm-memory/ADR-stdlib-http-transport.md. Do not add one back to get at a
+    # convenience method — check what it actually does on the wire first.
     "llm-price-tracker",
 ]
 

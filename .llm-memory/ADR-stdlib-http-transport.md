@@ -59,7 +59,28 @@ Verified against the real API, through the jail's loopback key broker:
 
 ## Migration status and the note this will falsify
 
-Done: `deepseek`, `zai`, `kimi`, `openai_compat`, `openai`, `grok`, `azure_openai`. Remaining: `anthropic`, `azure_anthropic`, `gemini`.
+**Complete. All ten adapters, and `pyproject.toml` now declares no vendor SDK at all** — only `llm-price-tracker`. Measured per-adapter startup afterwards: 0.111–0.124s, against 0.89s (anthropic), 0.88s (openai) and 1.02–1.46s (gemini) before.
+
+## Two hazards when a provider's SDK renamed things
+
+Gemini was the only conversion where the SDK did more than transport the call, and it failed in **two different ways that need different defences**:
+
+1. **Case.** The wire is camelCase (`usageMetadata`, `promptTokenCount`, `finishReason`); the SDK exposed snake_case; `gllm.usage.from_gemini` reads snake_case. `_snake_keys` rewrites response keys once, so the usage mapper, truncation detection and their tests need no Gemini special case.
+2. **Genuinely different names, which no transform can bridge.** The SDK's `supported_actions` is the wire's **`supportedGenerationMethods`** — not a case variant. Reading the SDK's name returned an **empty catalog rather than an error**, so `gllm --models gemini` silently printed nothing. Only a live call caught it; no unit test written against the same wrong assumption ever would.
+
+Also non-obvious on Gemini: `systemInstruction` is a **top-level** field (400s inside `generationConfig`), and the API version must stay **out** of the base URL — the SDK appended `/v1beta` itself, so every override in the wild (the jail broker's `GOOGLE_GEMINI_BASE_URL` included) points at the host and 404s if the base already contains it. That one also only showed up live.
+
+## Anthropic: streaming is not optional
+
+Anthropic documents a **10-minute ceiling on non-streaming Messages requests** (504 `timeout_error`, whose own remedy text says to use the streaming API), and gllm now defaults Claude to a 128k output budget — well capable of reaching it. So `_http.post_sse` exists, and the reasoning path streams and rebuilds the message via `final_message_from_events`.
+
+The reassembly is where a bug hides quietly: each event contributes something no other repeats. `message_start` is the only source of `input_tokens` and the cache counters; `message_delta` is the only source of `stop_reason` and the final `output_tokens`. Miss the latter and usage reads **zero output tokens** while the text still looks right. An `error` event can also arrive mid-stream after a 200, so a success status is not the end of error handling.
+
+`post_sse` is deliberately **not retried** — a stream can fail half-consumed, and replaying it would duplicate content or silently drop the first half.
+
+## What is NOT verified live
+
+`anthropic` and `azure_anthropic` are unit-tested only: the jail withholds Anthropic credentials from this agent and no Azure keys exist on this machine. `azure_openai` likewise. The live checks a work-box run should perform — including the SSE reassembly and the Azure URL shapes — are written up at the end of `AZURE-FOUNDRY-SMOKE-TEST.md`.
 
 **`openai` leaving took `grok` and `azure_openai` with it** — both subclass `OpenAIProvider` and inherit its `generate`, so they were never separately convertible. The "OpenAI-compatible chat" adapters are independent of each other; the Responses-API ones are one unit. With that batch done, **`openai` is out of `pyproject.toml`**. (`.venv` still has it installed until someone syncs, which is fine and better than running `uv sync` in the jail — see [[GOTCHA-jail-uv-venv-artifactory]].)
 

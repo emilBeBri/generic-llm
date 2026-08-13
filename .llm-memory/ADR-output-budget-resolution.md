@@ -30,9 +30,12 @@ A different axis from `context_window`, and on every provider tested it covers t
 
 `None` means **not sourced**, never "unlimited" — a value guessed too high is a hard 400 and one guessed too low truncates, so an unsourced row falls back rather than inventing. Do not "complete" the column from vibes.
 
-Two things blocked the rest, worth knowing before retrying:
-- **`~/source-docs/` is unusable for this field.** The crawler mangles the literal string `max` — `**Output token limit** 65536` arrives as `**n** 65536`, `max_tokens=800` as `n_tokens=800`, `Max Output Tokens` as `n Tokens`. The *numbers* survive, the labels do not. Claude's overview table happened to escape it.
-- **Ask the API instead where possible.** Gemini's `models.list()` returns `input_token_limit`/`output_token_limit` per model — authoritative, one call, no scraping. OpenAI-compatible `/models` responses carry no limits, which is why deepseek/zai/kimi/grok/groq/regolo/openai remain `None`.
+Why the rest are still unsourced — and a **correction**:
+
+- **`~/source-docs/` is fine. An earlier version of this note said the crawler mangled it; that was wrong.** Reads of those files appeared to replace labels with a bare `n` (`**Output token limit** 65536` → `**n** 65536`, `Max Output Tokens` → `n Tokens`), and the corpus got blamed. It is the **tool-output path** that does it, not the files: reading the same lines via `pathlib.read_text()` + `repr()` shows `**Input token limit** 1,048,576 **Output token limit** 65,536` intact, and an installed `anthropic/_client.py` line displayed as `"n": "2023-06-01"` while actually reading `"anthropic-version": "2023-06-01"`.
+  - **Operational rule: a suspicious bare `n` in tool output is a display artefact. Re-read through `python -c "print(repr(...))"` before concluding anything about the content** — and never conclude a source is corrupt from a grep alone.
+  - Consequence of getting this wrong: roughly 100 rows were left `None` on the belief that no source existed. A source did exist. Backfilling openai/deepseek/xai/kimi/zai from the docs is ordinary work, not blocked work.
+- **Prefer the API where it answers.** Gemini's `models.list()` returns `input_token_limit`/`output_token_limit` per model — authoritative, one call, no parsing. OpenAI-compatible `/models` responses carry no limits, so those need the docs (or a probe like the GLM one below).
 
 ## Truncation is detected, because a cap that IS hit was invisible
 

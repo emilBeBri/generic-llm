@@ -22,8 +22,9 @@ Two layers, deliberately separate:
 
 No connection pooling (one request per process), no redirect following (these
 APIs don't redirect; a 3xx is a misconfigured base URL and should say so), and
-no `Accept-Encoding` (we don't want to decompress). SSE is deliberately absent
-until the Anthropic adapter — the only caller that needs it — lands.
+no `Accept-Encoding` (we don't want to decompress). `post_sse` exists for the one
+caller that genuinely needs streaming — Anthropic, whose non-streaming Messages
+endpoint has a documented 10-minute ceiling.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ import os
 import ssl
 import sys
 import time
+from collections.abc import Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -213,14 +215,8 @@ def _request(
     raise RuntimeError(f"{url}: retries exhausted without a verdict ({last})")
 
 
-def _once(
-    method: str,
-    url: str,
-    headers: dict[str, str],
-    body: bytes | None,
-    timeout: float,
-) -> tuple[int, bytes, str | None]:
-    """One request/response round trip. Returns (status, body, Retry-After)."""
+def _connect(url: str, timeout: float) -> tuple[http.client.HTTPConnection, str]:
+    """An unsent connection plus the request target (path + query)."""
     parts = urlsplit(url)
     if parts.scheme == "https":
         conn: http.client.HTTPConnection = http.client.HTTPSConnection(
@@ -241,10 +237,76 @@ def _once(
     target = parts.path or "/"
     if parts.query:
         target = f"{target}?{parts.query}"
+    return conn, target
+
+
+def _once(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: bytes | None,
+    timeout: float,
+) -> tuple[int, bytes, str | None]:
+    """One request/response round trip. Returns (status, body, Retry-After)."""
+    conn, target = _connect(url, timeout)
     try:
         conn.request(method, target, body=body, headers=headers)
         resp = conn.getresponse()
         return resp.status, resp.read(), resp.getheader("Retry-After")
+    finally:
+        conn.close()
+
+
+def post_sse(
+    url: str,
+    headers: dict[str, str],
+    payload: dict,
+    *,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> Iterator[dict]:
+    """POST and yield each SSE `data:` payload, decoded.
+
+    Needed because Anthropic documents a **10-minute ceiling on non-streaming
+    Messages requests** (a 504 `timeout_error`, whose own remedy text says "use
+    the streaming Messages API for long-running requests"). gllm now defaults
+    Claude to a 128k output budget, which makes a long thinking generation quite
+    capable of reaching that — so the reasoning path streams and reassembles.
+
+    Deliberately **not retried**: a stream can fail half-consumed, and replaying
+    it would either duplicate content or silently drop the first half. A
+    connection error here is raised, and the caller decides.
+
+    `event:` lines are ignored — every provider that matters repeats the event
+    name inside the `data` object as a `type` field, which survives reordering
+    and is one less thing to keep in sync.
+    """
+    body = json.dumps(payload).encode()
+    sent = {
+        "Accept": "text/event-stream",
+        "Content-Type": "application/json",
+        "User-Agent": "gllm",
+        **headers,
+    }
+    conn, target = _connect(url, timeout)
+    try:
+        conn.request("POST", target, body=body, headers=sent)
+        resp = conn.getresponse()
+        if not 200 <= resp.status < 300:
+            raise APIError(resp.status, url, resp.read().decode("utf-8", "replace"))
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", "replace").strip()
+            # Blank lines separate events; ':' comments are keep-alive pings.
+            if not line or line.startswith(":") or not line.startswith("data:"):
+                continue
+            data = line[len("data:") :].strip()
+            if data == "[DONE]":  # OpenAI's terminator; Anthropic has no such line
+                break
+            try:
+                yield json.loads(data)
+            except json.JSONDecodeError as e:
+                raise RuntimeError(
+                    f"{url} sent an SSE data line that is not JSON ({e}): {data[:200]!r}"
+                ) from e
     finally:
         conn.close()
 

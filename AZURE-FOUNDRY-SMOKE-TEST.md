@@ -100,3 +100,58 @@ For each test: the exact command, exit code, the `-v` token line (Test 1), and t
 output (Test 2). If any FAIL row triggered, say which, and apply the noted fix (or leave
 it for review). The general structured-output behaviour matrix across all providers is in
 `./test-struct-out.zsh` if you want broader coverage.
+
+---
+
+# TODO added 2026-08-13: the stdlib-transport rewrite also needs verifying here
+
+Both Azure adapters were rewritten off the vendor SDKs (see
+`.llm-memory/ADR-stdlib-http-transport.md`) and **neither path could be exercised
+live** — this box has no Azure keys, so they are covered by unit tests only. Run
+these on the work box alongside the tests above.
+
+## `azure_openai` — URL derivation and both surfaces
+
+The adapter no longer uses the `openai` SDK; it builds the URL itself as
+`<AZURE_FOUNDRY_ENDPOINT>/v1` + `/responses` or `/chat/completions`, and
+authenticates with `Authorization: Bearer <key>` (the same header the SDK sent).
+Unit-tested: `/v1` is appended to a bare endpoint and not doubled on one that
+already ends in `/v1`.
+
+```sh
+gllm -v -m gpt-5.1-dev "reply with exactly: azure responses ok"   # Responses surface
+gllm -v -m gpt-4o-dev  "reply with exactly: azure chat ok"        # Chat surface
+gllm --models azure_openai                                        # registry rows, no live probe
+```
+
+- **A 404 means the URL shape is wrong** — most likely the endpoint needs the
+  classic `/openai/deployments/<name>/...` path (Azure OpenAI *Service*) rather
+  than Foundry MaaS `/v1/`. That distinction is called out at the top of
+  `azure_openai.py`; if it is wrong, fix it there.
+- **A 401 means the auth header is wrong** — Azure OpenAI Service uses an
+  `api-key:` header rather than `Authorization: Bearer`. The SDK sent Bearer, so
+  this should be unchanged, but it has never been observed working.
+
+## `azure_anthropic` — SSE reassembly
+
+This one changed more. It always streams (long thinking generations can hit
+Anthropic's documented 10-minute non-streaming ceiling, and gllm now defaults
+Claude to a 128k output budget, making that likelier). Where it used to call
+`stream.get_final_message()` in the SDK, it now parses the SSE event stream
+itself and rebuilds the final message from `message_start` /
+`content_block_delta` / `message_delta`.
+
+```sh
+gllm -v -m claude-opus-4-8-dev -r high "explain TCP slow start in two sentences"
+```
+
+Check all of: non-empty text, a sane `-v` token line (input AND output non-zero —
+output tokens arrive only in `message_delta`, so a zero there means the reassembly
+missed that event), and `--usage` reporting `stop_reason` `end_turn` rather than
+`null`.
+
+- **Empty output with a 200** means the event reassembly is wrong for Foundry —
+  most likely Foundry frames SSE differently. Dump the raw stream and compare
+  against the shapes in `platform.claude.com/docs/en/build-with-claude/streaming`.
+- Also confirm `--usage` shows non-zero `input_tokens`: those come from
+  `message_start`, a different event than the output count.

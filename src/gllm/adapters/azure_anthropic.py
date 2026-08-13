@@ -1,6 +1,8 @@
 """Azure Anthropic (Foundry) adapter.
 
-Claude served through Azure AI Foundry via the `AnthropicFoundry` client.
+Claude served through Azure AI Foundry's Anthropic MaaS endpoint, POSTed via
+`gllm._http` (it was the SDK's `AnthropicFoundry` client until the transport
+rewrite; the wire format is the same Messages API).
 Model names carry a `-dev` suffix (e.g. `claude-opus-4-7-dev`), which routing
 uses to pick this adapter over the direct Anthropic one.
 
@@ -18,20 +20,27 @@ way as the direct Anthropic one:
 - `--json` (no schema) → instruction, same as direct: the Anthropic API has no
   schemaless json-object mode.
 
-We always stream and take the final message — long thinking generations can
-outrun a non-streaming socket timeout; only text blocks are returned.
+We always stream and reassemble the final message: Anthropic documents a
+10-minute ceiling on non-streaming Messages requests, and gllm's default output
+budget for Claude is large enough to reach it. Only text blocks are returned.
 """
 
 from __future__ import annotations
 
 import os
 
+from .._http import post_sse, wrap
 from ..domain import Request, Response
 from ..ports import LLMProvider
 from ..reasoning import anthropic_thinking
-from ._capabilities import thinking_dialect
 from ..usage import from_anthropic
-from .anthropic import _anthropic_content
+from ._capabilities import thinking_dialect
+from .anthropic import (
+    ANTHROPIC_VERSION,
+    _anthropic_content,
+    _stop_reason,
+    final_message_from_events,
+)
 
 
 def _normalize_foundry_url(endpoint: str) -> str:
@@ -54,17 +63,10 @@ def _normalize_foundry_url(endpoint: str) -> str:
     return final
 
 
-def _stop_reason(msg) -> str | None:
-    """Anthropic `stop_reason` — "max_tokens" when the output cap is hit."""
-    return getattr(msg, "stop_reason", None)
-
-
 class AzureAnthropicProvider(LLMProvider):
     name = "azure_anthropic"
 
     def __init__(self, api_key: str | None = None, endpoint: str | None = None):
-        from anthropic import AnthropicFoundry
-
         key = api_key or os.environ.get("AZURE_ANTHROPIC_API_KEY")
         if not key:
             raise RuntimeError("AZURE_ANTHROPIC_API_KEY is not set")
@@ -72,9 +74,11 @@ class AzureAnthropicProvider(LLMProvider):
         if not endpoint:
             raise RuntimeError("AZURE_FOUNDRY_ENDPOINT is not set")
 
-        self.client = AnthropicFoundry(
-            api_key=key, base_url=_normalize_foundry_url(endpoint)
-        )
+        self.base_url = _normalize_foundry_url(endpoint).rstrip("/")
+        self.headers = {
+            "x-api-key": key,
+            "anthropic-version": ANTHROPIC_VERSION,
+        }
 
     def generate(self, request: Request) -> Response:
         content = _anthropic_content(request.prompt, request.attachments)
@@ -104,7 +108,8 @@ class AzureAnthropicProvider(LLMProvider):
             effort = r.get("effort")
 
         # output_config carries both structured-output `format` and reasoning
-        # `effort`, passed via extra_body (the SDK has no top-level param). Same
+        # `effort`, both plain top-level fields (they needed `extra_body` only to
+        # get past the SDK's kwarg validation). Same
         # as the direct adapter — Foundry documents `effort`; `format` is an
         # unverified native attempt (see AZURE-FOUNDRY-SMOKE-TEST.md).
         output_config: dict = {}
@@ -119,10 +124,17 @@ class AzureAnthropicProvider(LLMProvider):
         if effort is not None:
             output_config["effort"] = effort
         if output_config:
-            kwargs["extra_body"] = {"output_config": output_config}
+            kwargs["output_config"] = output_config
 
-        with self.client.messages.stream(**kwargs) as stream:
-            msg = stream.get_final_message()
+        msg = wrap(
+            final_message_from_events(
+                post_sse(
+                    f"{self.base_url}/v1/messages",
+                    self.headers,
+                    {**kwargs, "stream": True},
+                )
+            )
+        )
 
         text = "".join(
             b.text for b in msg.content if getattr(b, "type", None) == "text"
