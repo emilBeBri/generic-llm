@@ -32,3 +32,13 @@ llm-price-tracker = { path = "../llm-price-tracker", editable = true }
 dev = [
     "pytest>=8.0",
 ]
+
+[tool.pytest.ini_options]
+# Collect ONLY this repo's suite. `symlinks/` holds links to sibling repos so a
+# sandboxed agent can reach them (that is how `llm-price-tracker`, an editable
+# path dependency, becomes importable at all), and pytest follows symlinks — so
+# a bare `pytest` otherwise walks into those repos' test trees and aborts with
+# hundreds of collection errors that have nothing to do with gllm. Two links was
+# already 221.
+testpaths = ["tests"]
+norecursedirs = ["symlinks", "git-clones", ".venv", "data", "llms"]

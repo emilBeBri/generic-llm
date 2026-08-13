@@ -1,3 +1,23 @@
+# Reaching `llm-price-tracker` from inside the jail, and relocking without an index
+
+`llm-price-tracker` is an **editable path dependency** (`{ path = "../llm-price-tracker" }`), so it lives outside the project tree and is absent from a jailed session by default. The symptoms are 3 tests failing on `ModuleNotFoundError: llm_price_tracker` and `uv lock` refusing with `Distribution not found at: file:///home/emil/prog/prj/llm-price-tracker`.
+
+The fix is a project symlink — no reinstall, no `uv sync`:
+
+```sh
+ln -s ~/prog/prj/llm-price-tracker <project>/symlinks/llm-price-tracker
+```
+
+**Why that alone is sufficient** is the non-obvious part: the jail scanner bind-mounts a symlink target **at its original host path**, not only at the link path. The venv's editable install names an absolute path — `.venv/.../_editable_impl_llm_price_tracker.pth` contains `/home/emil/prog/prj/llm-price-tracker/src` — so the mount makes exactly the path that `.pth` already looks for exist, and the import resolves untouched. `symlinks/` is gitignored, so the link stays local. Needs a session relaunch: mounts are decided at launch.
+
+## `uv lock --offline` is the safe relock in here
+
+Plain `uv lock`/`uv sync` chase uv's Artifactory default index (below) — and since the SDK removal ([[ADR-stdlib-http-transport]]) gllm's only declared dependency is that local path, so no index is needed at all. `uv lock --offline` resolves from the mounted uv cache. Verified 2026-08-13: dropped 556 lines of stale SDK pins, `.venv` untouched, 354 tests still passing.
+
+## `pytest` follows symlinks, so `symlinks/` must be excluded
+
+Once sibling repos are linked in, a bare `pytest` walks into *their* test trees — two links produced **221 collection errors in 76s** instead of gllm's suite. `[tool.pytest.ini_options] testpaths = ["tests"]` plus `norecursedirs` fixes it for good (354 passed in 6.6s). `rg`/`fd` do **not** share this problem: they refuse to descend through a symlink without `-L`.
+
 # Gotcha: running gllm's tests in the claude-jail (uv wipes the venv chasing Artifactory)
 
 How to run `gllm`'s test suite inside the claude-jail sandbox, and why the naive `uv run pytest` destroys the venv there. Learned 2026-07-31 on x1 (the private box) while verifying a reasoning-ladder refactor.
