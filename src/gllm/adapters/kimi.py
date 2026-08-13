@@ -25,7 +25,6 @@ from ..usage import from_kimi
 from ._capabilities import is_text_generation_model
 
 KIMI_BASE_URL = "https://api.moonshot.ai/v1"
-_MIN_COMPLETION_TOKENS = 16_000
 
 
 def _is_k3(model: str) -> bool:
@@ -90,10 +89,12 @@ class KimiProvider(LLMProvider):
         kwargs: dict = {
             "model": model,
             "messages": messages,
-            "max_completion_tokens": max(
-                request.max_tokens,
-                _MIN_COMPLETION_TOKENS,
-            ),
+            # Resolved by the CLI. Note this floor used to be UNCONDITIONAL here
+            # (16000 even without -r), so a plain Kimi call now defaults to
+            # DEFAULT_MAX_OUTPUT like every other provider. Kimi publishes no
+            # fixed output ceiling — k3's limit is `context - prompt_tokens` —
+            # so there is no honest `max_output` to put in the registry yet.
+            "max_completion_tokens": request.max_tokens,
         }
         if request.json_mode:
             kwargs["response_format"] = {"type": "json_object"}

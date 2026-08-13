@@ -95,7 +95,7 @@ class AzureAnthropicProvider(LLMProvider):
                 thinking_dialect(self.name, request.model),
             )
             kwargs["thinking"] = r["thinking"]
-            kwargs["max_tokens"] = max(kwargs["max_tokens"], r["min_max_tokens"])
+            # max_tokens already sized by the CLI, same as the direct adapter.
             effort = r.get("effort")
 
         # output_config carries both structured-output `format` and reasoning

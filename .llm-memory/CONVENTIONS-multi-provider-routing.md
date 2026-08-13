@@ -49,7 +49,7 @@ Historically `reasoning._is_adaptive_family` matched the literal strings `4-6`/`
 
 The dialect now comes from `ModelCaps.thinking_dialect` on the model's row, so a new family is a registry row, not a string edit:
 
-- `anthropic_adaptive` (Claude 4.6/4.7/4.8, Sonnet 4.6, and the whole 5 line) — `thinking={type:"adaptive", display:"summarized"}`, `max_tokens=64000`, effort graded by `output_config.effort` on **both** the direct API and Azure Foundry.
+- `anthropic_adaptive` (Claude 4.6/4.7/4.8, Sonnet 4.6, and the whole 5 line) — `thinking={type:"adaptive", display:"summarized"}`, a preferred `max_tokens` of 64000 (gllm's headroom, overridable by an explicit `--max-tokens` — not an API requirement, since adaptive sends no budget; see [[ADR-output-budget-resolution]]), effort graded by `output_config.effort` on **both** the direct API and Azure Foundry.
 - `anthropic_budget` (4.5 and older) — `enabled`+`budget_tokens`.
 
 `display:"summarized"` stays mandatory on 4-7+ (the default flipped to `omitted`, which suppresses streaming thinking deltas — the terminal looks hung).

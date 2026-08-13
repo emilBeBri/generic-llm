@@ -87,14 +87,14 @@ class OpenAICompatProvider(LLMProvider):
         })
 
         reasoning_on = request.reasoning is not None
-        # Thinking tokens count against the output budget; raise the floor so the
-        # visible answer isn't starved (mirrors the gemini/openai/zai adapters).
-        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
 
         kwargs: dict = {
             "model": model,
             "messages": messages,
-            "max_tokens": max_out,
+            # The output budget arrives already resolved: the CLI sized it
+            # for reasoning (reasoning.min_output_tokens) or honoured an
+            # explicit --max-tokens. Send it verbatim.
+            "max_tokens": request.max_tokens,
         }
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature

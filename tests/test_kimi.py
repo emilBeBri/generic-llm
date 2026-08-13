@@ -51,7 +51,9 @@ def test_k3_sends_effort_without_thinking_block():
     assert response.text == "ok"
     assert completions.kwargs["reasoning_effort"] == "max"
     assert "extra_body" not in completions.kwargs
-    assert completions.kwargs["max_completion_tokens"] == 16_000
+    # Was an unconditional 16000 floor in the adapter; the CLI owns the output
+    # budget now, so the adapter forwards what it is given.
+    assert completions.kwargs["max_completion_tokens"] == 4096
 
 
 def test_k26_sends_binary_thinking_without_effort():

@@ -80,14 +80,14 @@ class DeepSeekProvider(LLMProvider):
         messages.append({"role": "user", "content": request.prompt})
 
         reasoning_on = request.reasoning is not None
-        # Thinking tokens count against the output budget; raise the floor so the
-        # visible answer isn't starved (mirrors the zai/gemini/openai adapters).
-        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
 
         kwargs: dict = {
             "model": request.wire_model or request.model,
             "messages": messages,
-            "max_tokens": max_out,
+            # The output budget arrives already resolved: the CLI sized it
+            # for reasoning (reasoning.min_output_tokens) or honoured an
+            # explicit --max-tokens. Send it verbatim.
+            "max_tokens": request.max_tokens,
         }
         # Thinking mode silently IGNORES temperature/top_p/penalties rather than
         # erroring, so only send one when thinking is off — otherwise the value

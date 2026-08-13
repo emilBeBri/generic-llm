@@ -67,6 +67,16 @@ class ModelSpec(NamedTuple):
     alt_model: str | None = None
     # Groups rows serving the same underlying open model across hosts.
     family: str | None = None
+    # Documented ceiling on OUTPUT tokens — a different axis from
+    # `context_window`, and on every provider tested it is thinking PLUS answer,
+    # not answer alone (proven on Gemini: max_output_tokens=120 with a 2048
+    # thinking budget returned thoughts=115, candidates=1, MAX_TOKENS).
+    #
+    # `None` means "not sourced", NOT "unlimited": populate a row only from the
+    # provider's own docs or API, because a value guessed too high is a hard 400
+    # and one guessed too low truncates. Unsourced rows fall back to
+    # `reasoning.REASONING_MIN_OUTPUT` / `DEFAULT_MAX_OUTPUT` in the CLI.
+    max_output: int | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -217,42 +227,52 @@ MODELS: dict[str, ModelSpec] = {
     "claude-fable-5": ModelSpec(
         "claude-fable-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         azure_alias="claude-fable-5-dev", alt_model="claude-opus-5",
+        max_output=128_000,
     ),
     "claude-opus-5": ModelSpec(
         "claude-opus-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         azure_alias="claude-opus-5-dev", alt_model="claude-sonnet-5",
+        max_output=128_000,
     ),
     "claude-sonnet-5": ModelSpec(
         "claude-sonnet-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         azure_alias="claude-sonnet-5-dev", alt_model="claude-opus-5",
+        max_output=128_000,
     ),
     "claude-opus-4-8": ModelSpec(
         "claude-opus-4-8", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         azure_alias="claude-opus-4-8-dev", alt_model="claude-opus-5",
+        max_output=128_000,
     ),
     "claude-opus-4-7": ModelSpec(
         "claude-opus-4-7", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         azure_alias="claude-opus-4-7-dev", alt_model="claude-opus-5",
+        max_output=128_000,
     ),
     "claude-opus-4-6": ModelSpec(
         "claude-opus-4-6", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE,
         azure_alias="claude-opus-4-6-dev", alt_model="claude-opus-5",
+        max_output=128_000,
     ),
     "claude-sonnet-4-6": ModelSpec(
         "claude-sonnet-4-6", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE,
         alt_model="claude-sonnet-5",
+        max_output=128_000,
     ),
     "claude-opus-4-5": ModelSpec(
         "claude-opus-4-5", "anthropic", 200_000, _CLAUDE_BUDGET,
         azure_alias="claude-opus-4-5-dev", alt_model="claude-opus-5",
+        max_output=64_000,
     ),
     "claude-sonnet-4-5": ModelSpec(
         "claude-sonnet-4-5", "anthropic", 200_000, _CLAUDE_BUDGET,
         alt_model="claude-sonnet-5",
+        max_output=64_000,
     ),
     "claude-haiku-4-5": ModelSpec(
         "claude-haiku-4-5", "anthropic", 200_000, _CLAUDE_BUDGET,
         azure_alias="claude-haiku-4-5-dev", alt_model="claude-sonnet-5",
+        max_output=64_000,
     ),
     # ----------------------------------------------------------------- #
     # OpenAI
@@ -367,22 +387,27 @@ MODELS: dict[str, ModelSpec] = {
     "gemini-3.6-flash": ModelSpec(
         "gemini-3.6-flash", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.5-flash",
+        max_output=65_536,
     ),
     "gemini-3.5-flash": ModelSpec(
         "gemini-3.5-flash", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.6-flash",
+        max_output=65_536,
     ),
     "gemini-3.5-flash-lite": ModelSpec(
         "gemini-3.5-flash-lite", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.1-flash-lite",
+        max_output=65_536,
     ),
     "gemini-3.1-flash-lite": ModelSpec(
         "gemini-3.1-flash-lite", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.5-flash-lite",
+        max_output=65_536,
     ),
     "gemini-3.1-pro-preview": ModelSpec(
         "gemini-3.1-pro-preview", "gemini", 1_000_000, _GEMINI,
         alt_model="gemini-3.6-flash",
+        max_output=65_536,
     ),
     "gemini-3-deep-think-preview": ModelSpec(
         "gemini-3-deep-think-preview", "gemini", 1_000_000, _GEMINI,
@@ -391,6 +416,7 @@ MODELS: dict[str, ModelSpec] = {
     "gemini-3-flash-preview": ModelSpec(
         "gemini-3-flash-preview", "gemini", 200_000, _GEMINI,
         alt_model="gemini-3.6-flash",
+        max_output=65_536,
     ),
     "gemini-3-flash-lite-preview": ModelSpec(
         "gemini-3-flash-lite-preview", "gemini", 200_000, _GEMINI,
@@ -400,11 +426,10 @@ MODELS: dict[str, ModelSpec] = {
         "gemini-3-flash-lite", "gemini", 200_000, _GEMINI,
         alt_model="gemini-3.5-flash-lite",
     ),
-    "gemini-2.5-pro": ModelSpec("gemini-2.5-pro", "gemini", 1_048_576, _GEMINI),
-    "gemini-2.5-flash": ModelSpec("gemini-2.5-flash", "gemini", 1_048_576, _GEMINI),
+    "gemini-2.5-pro": ModelSpec("gemini-2.5-pro", "gemini", 1_048_576, _GEMINI, max_output=65_536),
+    "gemini-2.5-flash": ModelSpec("gemini-2.5-flash", "gemini", 1_048_576, _GEMINI, max_output=65_536),
     "gemini-2.5-flash-lite": ModelSpec(
-        "gemini-2.5-flash-lite", "gemini", 1_048_576, _GEMINI
-    ),
+        "gemini-2.5-flash-lite", "gemini", 1_048_576, _GEMINI, max_output=65_536),
     # ----------------------------------------------------------------- #
     # DeepSeek (first-party). Also served third-party — see the host rows.
     # ----------------------------------------------------------------- #
@@ -622,32 +647,30 @@ MODELS: dict[str, ModelSpec] = {
     # existing says nothing about a deployment existing.
     # ----------------------------------------------------------------- #
     "claude-fable-5-dev": ModelSpec(
-        "claude-fable-5-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH
-    ),
+        "claude-fable-5-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH, max_output=128_000),
     "claude-opus-5-dev": ModelSpec(
         "claude-opus-5-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         alt_model="claude-sonnet-5-dev",
+        max_output=128_000,
     ),
     "claude-sonnet-5-dev": ModelSpec(
         "claude-sonnet-5-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         alt_model="claude-opus-5-dev",
+        max_output=128_000,
     ),
     "claude-opus-4-8-dev": ModelSpec(
-        "claude-opus-4-8-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH
-    ),
+        "claude-opus-4-8-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH, max_output=128_000),
     "claude-opus-4-7-dev": ModelSpec(
-        "claude-opus-4-7-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH
-    ),
+        "claude-opus-4-7-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH, max_output=128_000),
     "claude-opus-4-6-dev": ModelSpec(
         "claude-opus-4-6-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE,
         alt_model="claude-opus-4-5-dev",
+        max_output=128_000,
     ),
     "claude-opus-4-5-dev": ModelSpec(
-        "claude-opus-4-5-dev", "azure_anthropic", 200_000, _CLAUDE_BUDGET
-    ),
+        "claude-opus-4-5-dev", "azure_anthropic", 200_000, _CLAUDE_BUDGET, max_output=64_000),
     "claude-haiku-4-5-dev": ModelSpec(
-        "claude-haiku-4-5-dev", "azure_anthropic", 200_000, _CLAUDE_BUDGET
-    ),
+        "claude-haiku-4-5-dev", "azure_anthropic", 200_000, _CLAUDE_BUDGET, max_output=64_000),
     "gpt-5.6-sol-dev": ModelSpec(
         "gpt-5.6-sol-dev", "azure_openai", 1_050_000, _GPT5_MAX,
         alt_model="gpt-5.6-terra-dev",
@@ -805,3 +828,14 @@ def wire_id_for(model: str) -> str:
 def context_window_for(model: str, default: int = 128_000) -> int:
     spec = spec_for(model)
     return spec.context_window if spec is not None else default
+
+
+def max_output_for(model: str) -> int | None:
+    """Documented output ceiling, or None when this repo has not sourced one.
+
+    Deliberately no default: the caller decides what to do with "unknown",
+    because a wrong number here is either a 400 or a silent truncation. See
+    `ModelSpec.max_output`.
+    """
+    spec = spec_for(model)
+    return spec.max_output if spec is not None else None

@@ -29,10 +29,11 @@ from .adapters._capabilities import (
     supports_attachment,
     supports_reasoning,
     supports_strict_schema,
+    thinking_dialect,
 )
 from .config import work_env
 from .domain import Attachment, Request
-from .models import MODELS, wire_id_for
+from .models import MODELS, max_output_for, wire_id_for
 from .ports import LLMProvider
 from .providers import DISCOVERABLE_PROVIDERS, PROVIDERS
 from .routing import WORK_PROVIDER_REDIRECTS, effective_model, provider_for
@@ -43,6 +44,64 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 # cwd. cli.py lives at <root>/src/gllm/cli.py, so parents[2] is the repo root.
 # See .llm-memory/IDEAS-key-loading-secret-managers.md for the longer-term plan.
 CONFIG_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+
+# Fallback output budget for models whose real ceiling this repo has not sourced
+# (`ModelSpec.max_output is None`). Low on purpose: too high is a hard 400 on
+# several providers, and an unknown model is exactly where a guess is worst.
+DEFAULT_MAX_OUTPUT = 4096
+
+
+def _resolve_max_tokens(
+    explicit: int | None,
+    provider: str,
+    model: str,
+    wire_effort: str,
+    *,
+    quiet: bool,
+) -> int:
+    """The output budget actually sent, resolved once for every adapter.
+
+    Three cases, and the distinction between the first two is the whole point of
+    `--max-tokens` defaulting to None:
+
+    - **No flag.** gllm picks: the model's documented ceiling when the registry
+      knows it, else `DEFAULT_MAX_OUTPUT`, raised to the reasoning floor when
+      `-r` is on. Silent — the user expressed no preference to override.
+    - **Explicit, and adequate.** Sent verbatim.
+    - **Explicit, below the reasoning floor.** Honoured anyway, with a warning,
+      because a stated number is a decision and gllm does not quietly overrule
+      one. The exception is a floor the API *enforces* (Anthropic's
+      `budget_tokens < max_tokens`), which would be a guaranteed 400 — that
+      raises ValueError so the caller can refuse before spending a request.
+    """
+    dialect = thinking_dialect(provider, model) if wire_effort else None
+    floor = (
+        reasoning_mod.min_output_tokens(model, wire_effort, dialect)
+        if wire_effort
+        else 0
+    )
+
+    if explicit is None:
+        return max(max_output_for(model) or DEFAULT_MAX_OUTPUT, floor)
+
+    if explicit >= floor:
+        return explicit
+
+    hard = reasoning_mod.hard_min_output_tokens(model, wire_effort, dialect)
+    if hard is not None and explicit < hard:
+        raise ValueError(
+            f"--max-tokens {explicit} is below what {model} requires with "
+            f"-r: its thinking budget must be strictly less than max_tokens, "
+            f"so the API needs at least {hard}. Raise --max-tokens or drop -r."
+        )
+    if not quiet:
+        print(
+            f"gllm: --max-tokens {explicit} is below the {floor} that reasoning "
+            f"wants on {model}; sending {explicit} as asked. Thinking is spent "
+            f"from this budget, so the answer may be truncated.",
+            file=sys.stderr,
+        )
+    return explicit
 
 
 def _load_user_env_file(path: Path) -> None:
@@ -399,7 +458,13 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--max-tokens",
         type=int,
-        default=4096,
+        default=None,
+        help=(
+            "Ceiling on OUTPUT tokens, thinking included. Default: the model's "
+            "documented maximum where known, otherwise "
+            f"{DEFAULT_MAX_OUTPUT} (raised to fit reasoning). An explicit value "
+            "is sent as given, even if reasoning may then truncate the answer."
+        ),
     )
     p.add_argument(
         "-f",
@@ -565,6 +630,18 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
 
+    try:
+        max_tokens = _resolve_max_tokens(
+            args.max_tokens,
+            provider_name,
+            args.model,
+            wire_effort,
+            quiet=args.quiet_effort,
+        )
+    except ValueError as e:
+        print(f"gllm: {e}", file=sys.stderr)
+        return 2
+
     if model_was_defaulted:
         print(
             f"{args.model}:{args.reasoning}" if args.reasoning else args.model,
@@ -618,7 +695,7 @@ def main(argv: list[str] | None = None) -> int:
         # Namespaced host keys ('groq:openai/gpt-oss-120b') are gllm's identity
         # for the model; the host itself only knows the bare id.
         wire_model=wire_id_for(args.model),
-        max_tokens=args.max_tokens,
+        max_tokens=max_tokens,
         temperature=args.temperature,
         schema=schema,
         json_mode=args.json or schema is not None,

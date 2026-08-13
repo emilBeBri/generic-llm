@@ -94,8 +94,11 @@ class AnthropicProvider(LLMProvider):
                 thinking_dialect(self.name, request.model),
             )
             kwargs["thinking"] = r["thinking"]
-            # The thinking budget must be strictly below max_tokens.
-            kwargs["max_tokens"] = max(kwargs["max_tokens"], r["min_max_tokens"])
+            # No max_tokens adjustment here: the thinking budget must be
+            # strictly below max_tokens, and the CLI already enforced that from
+            # the same `anthropic_thinking` numbers (reasoning.min_output_tokens
+            # / hard_min_output_tokens) — refusing an explicit value too low to
+            # be legal rather than quietly rewriting it.
             effort = r.get("effort")
 
         # `output_config` carries BOTH structured-output `format` and reasoning

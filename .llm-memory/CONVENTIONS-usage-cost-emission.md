@@ -15,6 +15,8 @@ gllm-usage {"provider":..,"model":..,"reasoning":<level|null>,
             "usage_raw":{<provider's own usage dict, verbatim>}}
 ```
 
+`max_tokens` is the budget **actually sent**, not the one asked for. It used to be `args.max_tokens` while nine adapters silently raised what went on the wire, so the field disagreed with the request it claimed to describe — see [[ADR-output-budget-resolution]].
+
 ## Extraction lives in the adapters (`gllm/usage.py`)
 
 Per the "maximum precision at the source" rule: each adapter has its provider's

@@ -160,9 +160,6 @@ class OpenAIProvider(LLMProvider):
 
     def _generate_responses(self, request: Request) -> Response:
         reasoning_on = request.reasoning is not None
-        # Reasoning tokens count against max_output_tokens; raise the floor so
-        # the visible answer isn't starved by a long reasoning pass.
-        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
         kwargs: dict = {
             "model": request.wire_model or request.model,
             "input": _responses_input(
@@ -171,7 +168,10 @@ class OpenAIProvider(LLMProvider):
                 provider=self.name,
                 model=request.model,
             ),
-            "max_output_tokens": max_out,
+            # The output budget arrives already resolved: the CLI sized it
+            # for reasoning (reasoning.min_output_tokens) or honoured an
+            # explicit --max-tokens. Send it verbatim.
+            "max_output_tokens": request.max_tokens,
             "store": False,
         }
         if request.system:

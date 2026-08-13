@@ -135,6 +135,52 @@ def anthropic_thinking(effort: str, model: str, dialect: str) -> dict:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Output-budget floors
+#
+# Reasoning tokens are spent from the OUTPUT budget, not alongside it — verified
+# on Gemini, where max_output_tokens=120 with a 2048 thinking budget returned
+# thoughts=115, candidates=1 and finish_reason=MAX_TOKENS. So a max_tokens sized
+# for a plain answer starves the answer once thinking is on.
+#
+# This used to be a flat `max(request.max_tokens, 16000)` duplicated in seven
+# adapters, which meant an explicit --max-tokens was silently overridden in
+# seven places and reported wrongly by --usage. It resolves once in the CLI now.
+# --------------------------------------------------------------------------- #
+
+REASONING_MIN_OUTPUT = 16_000
+_ANTHROPIC_DIALECTS = ("anthropic_adaptive", "anthropic_budget")
+
+
+def min_output_tokens(model: str, effort: str, dialect: str | None) -> int:
+    """gllm's PREFERRED output budget when reasoning is on — headroom, not law.
+
+    Anthropic sizes it from the thinking budget; everyone else gets the flat
+    floor. Falling below this makes for a cramped answer, not an error, so an
+    explicit `--max-tokens` may go lower (loudly). See `hard_min_output_tokens`
+    for the case where the API genuinely refuses.
+    """
+    if dialect in _ANTHROPIC_DIALECTS:
+        return int(anthropic_thinking(effort, model, dialect)["min_max_tokens"])
+    return REASONING_MIN_OUTPUT
+
+
+def hard_min_output_tokens(model: str, effort: str, dialect: str | None) -> int | None:
+    """A minimum the API ENFORCES, or None when there is none.
+
+    Only Anthropic's old enabled+budget interface has one: `budget_tokens` must
+    be **strictly less than** `max_tokens` (platform.claude.com, Messages API),
+    so a smaller explicit value is a guaranteed 400 rather than a cramped
+    answer — worth refusing locally instead of paying for the round trip. The
+    adaptive dialect sends no budget, so it has no hard minimum and its
+    `min_max_tokens` is purely gllm's headroom preference.
+    """
+    if dialect != "anthropic_budget":
+        return None
+    budget = anthropic_thinking(effort, model, dialect)["thinking"].get("budget_tokens")
+    return budget + 1 if budget else None
+
+
 # Gemini thinking_budget per native value. -1 = dynamic (the model self-budgets
 # up to its cap), which is what the top rung resolves to.
 _GEMINI_BUDGETS = {"minimal": 1024, "low": 4096, "medium": 8192, "high": 16384,

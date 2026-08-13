@@ -52,11 +52,11 @@ class GeminiProvider(LLMProvider):
 
     def generate(self, request: Request) -> Response:
         reasoning_on = request.reasoning is not None
-        # Thinking tokens count against the output budget; raise the floor so
-        # the visible answer isn't starved.
-        max_out = max(request.max_tokens, 16000) if reasoning_on else request.max_tokens
         config_args: dict = {
-            "max_output_tokens": max_out,
+            # The output budget arrives already resolved: the CLI sized it
+            # for reasoning (reasoning.min_output_tokens) or honoured an
+            # explicit --max-tokens. Send it verbatim.
+            "max_output_tokens": request.max_tokens,
         }
         if request.system:
             config_args["system_instruction"] = request.system

@@ -74,8 +74,9 @@ def test_thinking_and_effort_go_top_level_not_in_extra_body(provider, posted):
     assert body["thinking"] == {"type": "enabled"}
     assert body["reasoning_effort"] == "max"
     assert "extra_body" not in body, "extra_body was an SDK concept, never a wire one"
-    # Thinking tokens come out of the output budget; the floor protects the answer.
-    assert body["max_tokens"] == 16_000
+    # The adapter no longer raises a reasoning floor of its own — it sends
+    # whatever budget the CLI resolved. See tests/test_max_tokens.py.
+    assert body["max_tokens"] == 4096
 
 
 def test_temperature_is_dropped_when_thinking_is_on(provider, posted):
