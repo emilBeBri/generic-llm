@@ -405,7 +405,7 @@ MODELS: dict[str, ModelSpec] = {
         max_output=65_536,
     ),
     "gemini-3.1-pro-preview": ModelSpec(
-        "gemini-3.1-pro-preview", "gemini", 1_000_000, _GEMINI,
+        "gemini-3.1-pro-preview", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.6-flash",
         max_output=65_536,
     ),
@@ -414,7 +414,7 @@ MODELS: dict[str, ModelSpec] = {
         alt_model="gemini-3.6-flash",
     ),
     "gemini-3-flash-preview": ModelSpec(
-        "gemini-3-flash-preview", "gemini", 200_000, _GEMINI,
+        "gemini-3-flash-preview", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.6-flash",
         max_output=65_536,
     ),
@@ -505,8 +505,16 @@ MODELS: dict[str, ModelSpec] = {
     "glm-4.5-airx": ModelSpec(
         "glm-4.5-airx", "zai", 128_000, _GLM_THINK, alt_model="glm-4.5-air"
     ),
+    # Both numbers MEASURED against the live API 2026-08-13, not documented.
+    # Context: 128_000 was provably wrong — a 65,017-token input plus
+    # max_tokens=66,000 (sum 131,017) succeeded, and 131,117 failed, bracketing
+    # the true window at 131,072. Output: the 400 for an over-large max_tokens
+    # names its own range — `1210 The max_tokens parameter is illegal.
+    # 限制数值范围[1,98304]`. The other zai rows still carry the unverified
+    # 128_000 and are therefore suspect too; nobody has probed them.
     "glm-4.5-flash": ModelSpec(
-        "glm-4.5-flash", "zai", 128_000, _GLM_THINK, alt_model="glm-4.5-air"
+        "glm-4.5-flash", "zai", 131_072, _GLM_THINK, alt_model="glm-4.5-air",
+        max_output=98_304,
     ),
     # Pre-4.5: no `thinking` block at all.
     "glm-4-32b-0414-128k": ModelSpec(
