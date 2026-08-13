@@ -45,6 +45,18 @@ A missing key raises `AttributeError` listing the available keys, so a changed r
 - **What we now own:** retry/backoff with `Retry-After` (integer seconds only — an HTTP-date falls through to backoff rather than dragging in `email.utils`), per-provider auth headers, and refusing redirects. A 3xx is a misconfigured base URL and says so.
 - **`http://` is supported on purpose** — the loopback key broker of [[ADR-base-url-env-override]] serves plain HTTP. It is not a TLS fallback.
 
+## Live verification (2026-08-13)
+
+Verified against the real API, through the jail's loopback key broker:
+
+- `--models deepseek` → both v4 rows. The `get_json` path.
+- plain call → text back, `tokens in=89 out=19`. The `post_json` path plus the usage mapper reading through `Obj`.
+- `-r high --usage` → `reasoning_tokens: 6`. **This is the proof the `extra_body` hoist is right**: had top-level `thinking`/`reasoning_effort` been the wrong wire shape, DeepSeek would have 400'd or silently ignored them and reasoning_tokens would be 0.
+- `usage_raw` came back with `completion_tokens_details`, `prompt_tokens_details` and `prompt_cache_hit_tokens`/`_miss` all intact — the nested dicts the old SDK `dir()`-scraping fallback dropped.
+- `--usage` degrades cleanly with no `llm_price_tracker` installed: `cost_usd: null, price_source: "none"`. Only its unit tests fail on the missing dep, not the runtime path.
+
+**Live provider testing IS available inside claude-jail** — the broker exports working session tokens plus `GLLM_BASE_URL_<TAG>` (see [[ADR-base-url-env-override]], which already documented this). Commit `ae5351f` claimed "this jail holds no provider keys" and skipped live verification on that basis; the claim was never checked with `env` and was false. Do not repeat it.
+
 ## Migration status and the note this will falsify
 
 Done: `deepseek`. Remaining: `grok`, `zai`, `kimi`, `openai_compat`, `openai`, `azure_openai`, `anthropic`, `azure_anthropic`, `gemini`. Anthropic additionally needs an SSE line reader in `_http` (it streams only to dodge socket timeouts on long thinking, then takes the final message). **`gemini` is the only real rewrite** — it is genuinely coupled to `types.GenerateContentConfig` / `types.ThinkingConfig` / `types.Part.from_bytes` / `resp.text`, and must be redone against the REST `:generateContent` endpoint. It is also the biggest single win at ~1.45 s.
