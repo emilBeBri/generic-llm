@@ -34,6 +34,23 @@ Two things blocked the rest, worth knowing before retrying:
 - **`~/source-docs/` is unusable for this field.** The crawler mangles the literal string `max` — `**Output token limit** 65536` arrives as `**n** 65536`, `max_tokens=800` as `n_tokens=800`, `Max Output Tokens` as `n Tokens`. The *numbers* survive, the labels do not. Claude's overview table happened to escape it.
 - **Ask the API instead where possible.** Gemini's `models.list()` returns `input_token_limit`/`output_token_limit` per model — authoritative, one call, no scraping. OpenAI-compatible `/models` responses carry no limits, which is why deepseek/zai/kimi/grok/groq/regolo/openai remain `None`.
 
+## Truncation is detected, because a cap that IS hit was invisible
+
+Sizing the budget correctly does not help when something still hits it, and until now nothing noticed: `finish_reason` was read nowhere in the tree, so a cut-off answer reached stdout looking exactly like a complete one.
+
+`Response.stop_reason` carries the provider's own word **verbatim** (`end_turn`, `stop`, `length`, `MAX_TOKENS`, `max_output_tokens`) — un-normalised for the same reason `usage_raw` is. `Response.truncated` is a property matching it case-folded against `domain._TRUNCATION_REASONS` = {`max_tokens`, `max_output_tokens`, `length`}, which is what lets Gemini's enum name share an entry with Anthropic's string. An **unrecognised** reason is *not* reported as truncation: a missed warning beats a false one.
+
+Three different extraction shapes, one per surface, and none of them interchangeable:
+
+| surface | where the reason lives |
+|---|---|
+| Anthropic Messages | `msg.stop_reason` → `"max_tokens"` |
+| OpenAI-compatible chat (deepseek, zai, kimi, compat, openai chat) | `choices[0].finish_reason` → `"length"` |
+| OpenAI **Responses** | `status="incomplete"` + `incomplete_details.reason` → `"max_output_tokens"`. There is no `finish_reason` on this surface. |
+| Gemini | `candidates[0].finish_reason` is an **enum** — use `.name` (`"MAX_TOKENS"`); `str()` yields `"FinishReason.MAX_TOKENS"` and matches nothing. |
+
+The warning is deliberately **not** silenced by `-q`: that flag is `--quiet-effort`, scoped to the effort-remap notice, and truncation is a correctness signal rather than chatter. Verified live on deepseek both ways — `--max-tokens 12` warned with `stop_reason='length'`, a complete answer reported `"truncated":false` and printed nothing.
+
 ## Behaviour change to know about
 
 Kimi's floor was **unconditional** (16000 even without `-r`), so a plain Kimi call now defaults to `DEFAULT_MAX_OUTPUT` like every other provider. Kimi publishes no fixed ceiling — k3's limit is `context - prompt_tokens` — so there is no honest `max_output` to put in the registry for it yet.

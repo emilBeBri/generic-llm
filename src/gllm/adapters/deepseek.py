@@ -37,6 +37,12 @@ from ._capabilities import is_text_generation_model
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 
+def _finish_reason(resp) -> str | None:
+    """OpenAI-compatible `choices[0].finish_reason` — "length" when capped."""
+    choices = getattr(resp, "choices", None) or []
+    return getattr(choices[0], "finish_reason", None) if choices else None
+
+
 class DeepSeekProvider(LLMProvider):
     name = "deepseek"
 
@@ -116,6 +122,7 @@ class DeepSeekProvider(LLMProvider):
             text=text,
             model=resp.model,
             provider=self.name,
+            stop_reason=_finish_reason(resp),
             raw=resp,
             **from_deepseek(getattr(resp, "usage", None)),
         )

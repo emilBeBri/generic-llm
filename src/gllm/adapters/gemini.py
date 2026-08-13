@@ -24,6 +24,21 @@ from ..usage import from_gemini
 from ._capabilities import is_text_generation_model
 
 
+def _finish_reason(resp) -> str | None:
+    """Gemini reports `candidates[0].finish_reason` as an ENUM, not a string.
+
+    `.name` is the comparable value ("MAX_TOKENS"); `str()` on the enum yields
+    "FinishReason.MAX_TOKENS", which matches nothing.
+    """
+    candidates = getattr(resp, "candidates", None) or []
+    if not candidates:
+        return None
+    reason = getattr(candidates[0], "finish_reason", None)
+    if reason is None:
+        return None
+    return getattr(reason, "name", None) or str(reason)
+
+
 class GeminiProvider(LLMProvider):
     name = "gemini"
 
@@ -99,6 +114,7 @@ class GeminiProvider(LLMProvider):
             text=text,
             model=request.model,  # registry key, not the wire id
             provider=self.name,
+            stop_reason=_finish_reason(resp),
             raw=resp,
             **from_gemini(getattr(resp, "usage_metadata", None)),
         )

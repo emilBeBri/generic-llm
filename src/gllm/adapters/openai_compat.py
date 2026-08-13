@@ -41,6 +41,12 @@ from ..usage import from_openai_chat
 from ._capabilities import is_text_generation_model
 
 
+def _finish_reason(resp) -> str | None:
+    """OpenAI-compatible `choices[0].finish_reason` — "length" when capped."""
+    choices = getattr(resp, "choices", None) or []
+    return getattr(choices[0], "finish_reason", None) if choices else None
+
+
 class OpenAICompatProvider(LLMProvider):
     """An OpenAI-compatible host, described entirely by its ProviderSpec."""
 
@@ -127,6 +133,7 @@ class OpenAICompatProvider(LLMProvider):
             # pricing and the user all identify the model by.
             model=request.model or model,
             provider=self.name,
+            stop_reason=_finish_reason(resp),
             raw=resp,
             **from_openai_chat(getattr(resp, "usage", None)),
         )

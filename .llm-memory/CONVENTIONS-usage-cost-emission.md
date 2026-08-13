@@ -11,9 +11,12 @@ Record shape (`cli.py`, end of `main()`):
 gllm-usage {"provider":..,"model":..,"reasoning":<level|null>,
             "input_tokens":..,"output_tokens":..,
             "cache_read_tokens":..,"cache_write_tokens":..,"reasoning_tokens":..,
-            "max_tokens":..,"schema":<bool>,"json":<bool>,
+            "max_tokens":..,"stop_reason":<provider's own word|null>,
+            "truncated":<bool>,"schema":<bool>,"json":<bool>,
             "usage_raw":{<provider's own usage dict, verbatim>}}
 ```
+
+`stop_reason` is the provider's own word, verbatim and un-normalised (`end_turn`, `stop`, `length`, `MAX_TOKENS`, `max_output_tokens`) — same rule as `usage_raw`. `truncated` is gllm's reading of it, so a consumer needn't know that Gemini says `MAX_TOKENS` where OpenAI chat says `length`. See [[ADR-output-budget-resolution]].
 
 `max_tokens` is the budget **actually sent**, not the one asked for. It used to be `args.max_tokens` while nine adapters silently raised what went on the wire, so the field disagreed with the request it claimed to describe — see [[ADR-output-budget-resolution]].
 

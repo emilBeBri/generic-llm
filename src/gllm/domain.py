@@ -58,6 +58,13 @@ class Request:
     wire_effort: str = ""
 
 
+# Every provider's own word for "I stopped because the output budget ran out".
+# Compared case-folded, which is what lets Gemini's `MAX_TOKENS` enum name share
+# an entry with Anthropic's `max_tokens`. Anything else — "stop", "end_turn",
+# "tool_use" — is a complete answer.
+_TRUNCATION_REASONS = frozenset({"max_tokens", "max_output_tokens", "length"})
+
+
 @dataclass
 class Response:
     text: str
@@ -74,4 +81,19 @@ class Response:
     cache_write_tokens: int = 0
     reasoning_tokens: int = 0
     usage_raw: dict = field(default_factory=dict)
+    # The provider's own stop/finish reason, VERBATIM — `end_turn`, `stop`,
+    # `max_tokens`, `MAX_TOKENS`, `length`. Not normalised, for the same reason
+    # `usage_raw` isn't: the provider's word is the ground truth and the
+    # vocabularies genuinely differ. None when a provider didn't say.
+    stop_reason: str | None = None
     raw: Any = field(default=None, repr=False)
+
+    @property
+    def truncated(self) -> bool:
+        """Did generation stop because it ran out of output budget?
+
+        Worth surfacing because a truncated answer is indistinguishable from a
+        complete one on stdout — a `--max-tokens 120` Gemini call printed `1` for
+        `23*47` and looked like a confident wrong answer, not a cut-off one.
+        """
+        return (self.stop_reason or "").strip().lower() in _TRUNCATION_REASONS

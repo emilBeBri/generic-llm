@@ -753,6 +753,23 @@ def main(argv: list[str] | None = None) -> int:
     if not response.text.endswith("\n"):
         sys.stdout.write("\n")
 
+    # A truncated answer looks exactly like a complete one on stdout — a capped
+    # Gemini call printed "1" for 23*47 and read as a confident wrong answer.
+    # Deliberately NOT silenced by -q: that flag is --quiet-effort, scoped to the
+    # effort-remap notice, and this is a correctness signal rather than chatter.
+    if response.truncated:
+        print(
+            f"gllm: OUTPUT TRUNCATED — {response.provider} stopped at "
+            f"{request.max_tokens} tokens (stop_reason={response.stop_reason!r}). "
+            f"The answer above is cut off; raise --max-tokens."
+            + (
+                " Reasoning is spent from this same budget."
+                if request.reasoning
+                else ""
+            ),
+            file=sys.stderr,
+        )
+
     if args.verbose:
         print(
             f"gllm: tokens in={response.input_tokens} out={response.output_tokens}",
@@ -789,6 +806,11 @@ def main(argv: list[str] | None = None) -> int:
             **usage,
             **pricing.price_report(response.provider, candidates, usage),
             "max_tokens": request.max_tokens,
+            # The provider's own word, verbatim, plus gllm's reading of it — a
+            # machine consumer should not have to know that Gemini says
+            # MAX_TOKENS where OpenAI chat says length.
+            "stop_reason": response.stop_reason,
+            "truncated": response.truncated,
             "schema": schema is not None,
             "json": request.json_mode,
             "usage_raw": response.usage_raw,

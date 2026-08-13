@@ -45,6 +45,12 @@ def _image_part(attachment: Attachment) -> dict:
     }
 
 
+def _finish_reason(resp) -> str | None:
+    """OpenAI-compatible `choices[0].finish_reason` — "length" when capped."""
+    choices = getattr(resp, "choices", None) or []
+    return getattr(choices[0], "finish_reason", None) if choices else None
+
+
 class KimiProvider(LLMProvider):
     name = "kimi"
 
@@ -106,6 +112,7 @@ class KimiProvider(LLMProvider):
             text=text,
             model=request.model or response.model,
             provider=self.name,
+            stop_reason=_finish_reason(response),
             raw=response,
             **from_kimi(getattr(response, "usage", None)),
         )

@@ -121,6 +121,21 @@ def _chat_user_content(
     return parts
 
 
+def _incomplete_reason(resp) -> str | None:
+    """Responses API: a capped generation comes back `status="incomplete"` with
+    `incomplete_details.reason = "max_output_tokens"` — there is no
+    `finish_reason` on this surface."""
+    details = getattr(resp, "incomplete_details", None)
+    return getattr(details, "reason", None) if details else None
+
+
+def _finish_reason(resp) -> str | None:
+    """Chat Completions surface: `choices[0].finish_reason` — "length" when
+    capped."""
+    choices = getattr(resp, "choices", None) or []
+    return getattr(choices[0], "finish_reason", None) if choices else None
+
+
 class OpenAIProvider(LLMProvider):
     name = "openai"
 
@@ -203,6 +218,7 @@ class OpenAIProvider(LLMProvider):
             text=text,
             model=request.model,  # registry key, not the wire id
             provider=self.name,
+            stop_reason=_incomplete_reason(resp),
             raw=resp,
             **from_openai_responses(getattr(resp, "usage", None)),
         )
@@ -249,6 +265,7 @@ class OpenAIProvider(LLMProvider):
             text=text,
             model=resp.model,
             provider=self.name,
+            stop_reason=_finish_reason(resp),
             raw=resp,
             **from_openai_chat(getattr(resp, "usage", None)),
         )

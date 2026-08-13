@@ -55,6 +55,11 @@ def _anthropic_content(prompt: str, attachments: tuple[Attachment, ...]) -> list
     return blocks
 
 
+def _stop_reason(msg) -> str | None:
+    """Anthropic `stop_reason` — "max_tokens" when the output cap is hit."""
+    return getattr(msg, "stop_reason", None)
+
+
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
 
@@ -132,6 +137,7 @@ class AnthropicProvider(LLMProvider):
             text=text,
             model=msg.model,
             provider=self.name,
+            stop_reason=_stop_reason(msg),
             raw=msg,
             **from_anthropic(msg.usage),
         )

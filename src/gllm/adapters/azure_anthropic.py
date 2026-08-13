@@ -54,6 +54,11 @@ def _normalize_foundry_url(endpoint: str) -> str:
     return final
 
 
+def _stop_reason(msg) -> str | None:
+    """Anthropic `stop_reason` — "max_tokens" when the output cap is hit."""
+    return getattr(msg, "stop_reason", None)
+
+
 class AzureAnthropicProvider(LLMProvider):
     name = "azure_anthropic"
 
@@ -127,6 +132,7 @@ class AzureAnthropicProvider(LLMProvider):
             text=text,
             model=msg.model,
             provider=self.name,
+            stop_reason=_stop_reason(msg),
             raw=msg,
             **from_anthropic(msg.usage),
         )

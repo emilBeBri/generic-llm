@@ -59,6 +59,12 @@ def _image_part(a: Attachment) -> dict:
     }
 
 
+def _finish_reason(resp) -> str | None:
+    """OpenAI-compatible `choices[0].finish_reason` — "length" when capped."""
+    choices = getattr(resp, "choices", None) or []
+    return getattr(choices[0], "finish_reason", None) if choices else None
+
+
 class ZaiProvider(LLMProvider):
     name = "zai"
 
@@ -128,6 +134,7 @@ class ZaiProvider(LLMProvider):
             text=text,
             model=resp.model,
             provider=self.name,
+            stop_reason=_finish_reason(resp),
             raw=resp,
             **from_openai_chat(getattr(resp, "usage", None)),
         )
