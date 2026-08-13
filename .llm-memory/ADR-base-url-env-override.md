@@ -18,6 +18,8 @@ Note which slot the broker occupies per provider, because it is not uniform: it 
 
 ## Coverage: only the adapters that need it
 
-Wired into `deepseek`, `grok`, `kimi`, `zai`, and `openai_compat` — the last one covers **every** OpenAI-compatible host (groq, regolo, …) in a single edit, since they all resolve their endpoint through the shared `ProviderSpec`. The `openai`, `anthropic` and `gemini` adapters need nothing: their SDKs already read their own base-URL env vars. This asymmetry is deliberate, not an oversight — don't "complete" it by adding a second override path where the SDK already has one.
+Wired into `deepseek`, `grok`, `kimi`, `zai`, `openai_compat` — the last one covers **every** OpenAI-compatible host (groq, regolo, …) in a single edit, since they all resolve their endpoint through the shared `ProviderSpec` — and now `openai` too.
+
+**The old asymmetry is gone, and this note used to justify it.** It said `openai`/`anthropic`/`gemini` "need nothing: their SDKs already read their own base-URL env vars". That held only while the SDKs were there. As each adapter moves to the stdlib transport ([[ADR-stdlib-http-transport]]) it inherits responsibility for its own endpoint: `openai` now resolves `GLLM_BASE_URL_OPENAI` with `legacy_env="OPENAI_BASE_URL"` — the exact variable the broker sets, so omitting it would have broken every jailed OpenAI call while presenting as an auth failure. `anthropic` and `gemini` still ride their SDKs' own env vars; wire them the same way when they convert, and delete this paragraph once they have.
 
 Related: `ADR-provider-model-axis.md` (where the provider tag comes from), `GOTCHA-azure-foundry-constraints.md` (the other env-driven routing switch, `WORK=1`).

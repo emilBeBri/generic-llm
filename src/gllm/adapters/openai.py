@@ -19,8 +19,8 @@ import base64
 import os
 from pathlib import Path
 
-from openai import OpenAI
-
+from .._http import get_json, post_json, wrap
+from ..config import resolve_base_url
 from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..usage import from_openai_chat, from_openai_responses
@@ -31,6 +31,8 @@ from ._capabilities import (
     supports_attachment,
     use_responses_api,
 )
+
+OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 
 def _attachment_filename(attachment: Attachment) -> str:
@@ -121,6 +123,35 @@ def _chat_user_content(
     return parts
 
 
+def _output_text(resp) -> str:
+    """Reconstruct the Responses API's flattened text from the raw `output` list.
+
+    `resp.output_text` was an SDK CONVENIENCE, not a wire field — dropping the
+    SDK means rebuilding it. The wire shape is a list of typed items
+    (`reasoning`, `message`, `web_search_call`, …); only `message` items carry
+    content, and within that only `output_text` parts are answer text.
+
+    A `refusal` part with no accompanying text raises rather than returning "":
+    the SDK's `output_text` would have been empty and gllm would have printed a
+    blank line as though the call succeeded.
+    """
+    chunks: list[str] = []
+    refusals: list[str] = []
+    for item in getattr(resp, "output", None) or []:
+        for part in getattr(item, "content", None) or []:
+            kind = getattr(part, "type", None)
+            if kind == "output_text":
+                chunks.append(getattr(part, "text", "") or "")
+            elif kind == "refusal":
+                refusals.append(getattr(part, "refusal", "") or "")
+    text = "".join(chunks)
+    if not text and refusals:
+        raise RuntimeError(
+            "the model refused this request: " + " ".join(r for r in refusals if r)
+        )
+    return text
+
+
 def _incomplete_reason(resp) -> str | None:
     """Responses API: a capped generation comes back `status="incomplete"` with
     `incomplete_details.reason = "max_output_tokens"` — there is no
@@ -151,21 +182,28 @@ class OpenAIProvider(LLMProvider):
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
             raise RuntimeError("OPENAI_API_KEY is not set")
-        client_kwargs: dict = {"api_key": key, "max_retries": 3}
-        if base_url:
-            client_kwargs["base_url"] = base_url
-        self.client = OpenAI(**client_kwargs)
+        # A subclass-supplied base_url wins (Grok resolves its own; Azure derives
+        # one from AZURE_FOUNDRY_ENDPOINT). Only the direct provider consults the
+        # environment — and it MUST, now that the SDK is gone: the SDK used to
+        # read OPENAI_BASE_URL itself, which is how the jail's key broker
+        # redirects us. `legacy_env` preserves that exact variable.
+        resolved = base_url or resolve_base_url(
+            "openai", OPENAI_BASE_URL, legacy_env="OPENAI_BASE_URL"
+        )
+        self.base_url = (resolved or OPENAI_BASE_URL).rstrip("/")
+        self.headers = {"Authorization": f"Bearer {key}"}
         if name:
             self.name = name
 
     def list_models(self) -> list[str]:
-        # `models.list()` returns the full catalog with no capability metadata,
-        # so filter non-text-generation families (embeddings/audio/image/
-        # moderation) by name. Inherited by Grok unchanged.
+        # The catalog endpoint returns no capability metadata, so filter
+        # non-text-generation families (embeddings/audio/image/moderation) by
+        # name. Inherited by Grok and Azure unchanged.
+        catalog = get_json(f"{self.base_url}/models", self.headers)
         return sorted(
-            m.id
-            for m in self.client.models.list()
-            if is_text_generation_model(m.id)
+            m["id"]
+            for m in catalog.get("data", [])
+            if is_text_generation_model(m["id"])
         )
 
     def generate(self, request: Request) -> Response:
@@ -209,10 +247,9 @@ class OpenAIProvider(LLMProvider):
         elif request.json_mode:
             kwargs["text"] = {"format": {"type": "json_object"}}
 
-        resp = self.client.responses.create(**kwargs)
+        resp = wrap(post_json(f"{self.base_url}/responses", self.headers, kwargs))
 
-        # SDK exposes a flattened `output_text` aggregating all text deltas.
-        text = getattr(resp, "output_text", "") or ""
+        text = _output_text(resp)
 
         return Response(
             text=text,
@@ -257,9 +294,11 @@ class OpenAIProvider(LLMProvider):
         elif request.json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        resp = self.client.chat.completions.create(**kwargs)
+        resp = wrap(
+            post_json(f"{self.base_url}/chat/completions", self.headers, kwargs)
+        )
 
-        text = resp.choices[0].message.content or ""
+        text = getattr(resp.choices[0].message, "content", None) or ""
 
         return Response(
             text=text,

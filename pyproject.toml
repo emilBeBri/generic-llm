@@ -5,8 +5,11 @@ description = "gllm — a minimal Unix-pipe-friendly CLI for calling LLMs (Anthr
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    # Shrinking on purpose — see .llm-memory/ADR-stdlib-http-transport.md.
+    # `openai` is gone: every adapter that spoke Chat Completions or Responses
+    # now POSTs through gllm._http, which cut per-call startup from ~890ms to
+    # ~110ms. These two remain only because their adapters are not converted yet.
     "anthropic>=0.76.0",
-    "openai>=2.15.0",
     "google-genai>=1.59.0",
     "llm-price-tracker",
 ]

@@ -59,9 +59,19 @@ Verified against the real API, through the jail's loopback key broker:
 
 ## Migration status and the note this will falsify
 
-Done: `deepseek`, `zai`, `kimi`, `openai_compat`. Remaining: `openai`, `azure_openai`, `grok`, `anthropic`, `azure_anthropic`, `gemini`.
+Done: `deepseek`, `zai`, `kimi`, `openai_compat`, `openai`, `grok`, `azure_openai`. Remaining: `anthropic`, `azure_anthropic`, `gemini`.
 
-**`grok` cannot be converted on its own** — it subclasses `OpenAIProvider` and inherits its Responses-API `generate`, so it converts only when `openai.py` does. Same for `azure_openai`. Worth knowing before planning a batch: the "OpenAI-compatible chat" adapters are independent of each other, the Responses-API ones are one unit.
+**`openai` leaving took `grok` and `azure_openai` with it** — both subclass `OpenAIProvider` and inherit its `generate`, so they were never separately convertible. The "OpenAI-compatible chat" adapters are independent of each other; the Responses-API ones are one unit. With that batch done, **`openai` is out of `pyproject.toml`**. (`.venv` still has it installed until someone syncs, which is fine and better than running `uv sync` in the jail — see [[GOTCHA-jail-uv-venv-artifactory]].)
+
+## The Responses API needed something rebuilt, not just re-posted
+
+Every other conversion was a call-site swap. `openai.py` was not: **`resp.output_text` is an SDK convenience, not a wire field.** The raw response is a list of typed items (`reasoning`, `message`, `web_search_call`, …); only `message` items carry `content`, and within that only `output_text` parts are answer text. `_output_text` reassembles it.
+
+While rebuilding it, one deliberate deviation from SDK parity: a `refusal` content part with no accompanying text now **raises**. The SDK's `output_text` would have been `""`, so gllm would have exited 0 having printed a blank line — indistinguishable from an empty answer, and the same class of silent-wrong-output as the truncation gap in [[ADR-output-budget-resolution]].
+
+## `OPENAI_BASE_URL` had to be wired, and this falsifies an older note
+
+[[ADR-base-url-env-override]] said `openai`/`anthropic`/`gemini` "need nothing here: their SDKs already read their own base-URL env vars". True until the SDK left. `OpenAIProvider` now calls `resolve_base_url("openai", …, legacy_env="OPENAI_BASE_URL")`, because **the jail's key broker sets exactly that variable** — dropping the SDK without wiring it would have broken every jailed OpenAI call while looking like an auth problem. Corrected in that note; the same correction is still pending for `anthropic` and `gemini` when they convert.
 
 ## Verifying a hoisted key needs a DIFFERENTIAL, not a successful call
 
