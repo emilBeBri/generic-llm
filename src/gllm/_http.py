@@ -32,6 +32,7 @@ import http.client
 import json
 import os
 import ssl
+import sys
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -41,6 +42,16 @@ from urllib.parse import urlsplit
 # truncated request costs real money, so the socket waits.
 DEFAULT_TIMEOUT = float(os.environ.get("GLLM_HTTP_TIMEOUT") or 600)
 DEFAULT_RETRIES = 3
+
+# Ceiling on TOTAL time spent sleeping between retries, across all of them.
+#
+# Honouring `Retry-After` is correct; doing it silently for 60s x 3 retries is
+# not. gllm is a one-shot CLI, and a process that goes mute for three minutes
+# reads as a hang — it was diagnosed as one during development before the
+# backoff turned out to be the cause. So the waiting is capped and every wait is
+# announced on stderr. Not silenced by -q: that flag is --quiet-effort, and this
+# is the difference between "slow" and "broken".
+RETRY_BUDGET = float(os.environ.get("GLLM_RETRY_BUDGET") or 30)
 
 # Retried with backoff. 429 is rate limiting, 5xx is the provider's problem,
 # 408/409 are the two request-level codes these APIs use for "try again".
@@ -154,6 +165,7 @@ def _request(
         sent["Content-Type"] = "application/json"
 
     last: Exception | None = None
+    budget = RETRY_BUDGET
     for attempt in range(max_retries + 1):
         try:
             status, raw, retry_after = _once(method, url, sent, body, timeout)
@@ -163,11 +175,27 @@ def _request(
             last = e
             if attempt == max_retries:
                 raise
-            _sleep_before_retry(attempt, None)
+            waited = _wait_before_retry(
+                attempt, None, budget, url, type(e).__name__, max_retries
+            )
+            if waited is None:
+                raise
+            budget -= waited
             continue
 
         if status in _RETRY_STATUS and attempt < max_retries:
-            _sleep_before_retry(attempt, retry_after)
+            waited = _wait_before_retry(
+                attempt, retry_after, budget, url, f"HTTP {status}", max_retries
+            )
+            if waited is None:
+                raise APIError(
+                    status,
+                    url,
+                    raw.decode("utf-8", "replace")
+                    + f" [gllm gave up: the {RETRY_BUDGET:g}s retry budget would "
+                    f"be exceeded; raise GLLM_RETRY_BUDGET to wait longer]",
+                )
+            budget -= waited
             continue
         if not 200 <= status < 300:
             raise APIError(status, url, raw.decode("utf-8", "replace"))
@@ -221,8 +249,40 @@ def _once(
         conn.close()
 
 
-def _sleep_before_retry(attempt: int, retry_after: str | None) -> None:
-    """Honour `Retry-After` seconds when given, else exponential backoff.
+def _wait_before_retry(
+    attempt: int,
+    retry_after: str | None,
+    budget: float,
+    url: str,
+    reason: str,
+    max_retries: int,
+) -> float | None:
+    """Sleep before the next attempt and say so. Returns seconds slept.
+
+    Returns **None** instead when the wait would blow the remaining retry
+    budget, which tells the caller to give up now and report the real error
+    rather than sit on it. That is the whole point: a one-shot CLI should fail in
+    seconds with a reason, not succeed in three minutes of silence.
+    """
+    delay = _retry_delay(attempt, retry_after)
+    if delay > budget:
+        print(
+            f"gllm: {reason} from {urlsplit(url).netloc}; giving up rather than "
+            f"waiting {delay:g}s (only {max(budget, 0):g}s of retry budget left)",
+            file=sys.stderr,
+        )
+        return None
+    print(
+        f"gllm: {reason} from {urlsplit(url).netloc}, retrying in {delay:g}s "
+        f"({attempt + 1}/{max_retries})",
+        file=sys.stderr,
+    )
+    time.sleep(delay)
+    return delay
+
+
+def _retry_delay(attempt: int, retry_after: str | None) -> float:
+    """`Retry-After` seconds when the provider gave a usable one, else backoff.
 
     `Retry-After` may also be an HTTP-date; parsing that would pull in
     `email.utils` for a header these APIs send as an integer, so a non-integer
@@ -230,11 +290,10 @@ def _sleep_before_retry(attempt: int, retry_after: str | None) -> None:
     """
     if retry_after:
         try:
-            time.sleep(min(float(retry_after.strip()), 60.0))
-            return
+            return float(retry_after.strip())
         except ValueError:
             pass
     # Jitter from os.urandom keeps `random` (and its ~5 ms of imports) out of
     # the startup path we are here to shrink.
     jitter = os.urandom(1)[0] / 255.0
-    time.sleep(min(0.5 * (2**attempt) + jitter, 30.0))
+    return min(0.5 * (2**attempt) + jitter, 30.0)

@@ -217,3 +217,68 @@ def test_connection_failure_is_retried_then_raised(no_sleep):
     with pytest.raises(OSError):
         post_json("http://127.0.0.1:1/v1", {}, {"model": "m"}, max_retries=2)
     assert len(no_sleep) == 2
+
+
+# --- the retry budget ------------------------------------------------------
+#
+# Honouring Retry-After is right; doing it silently for 60s x 3 is not. A
+# one-shot CLI that goes mute for three minutes reads as a hang — it was
+# misdiagnosed as one during development before the backoff turned out to be the
+# cause.
+
+def test_a_retry_after_beyond_the_budget_gives_up_instead_of_waiting(server, no_sleep):
+    server.script.append((429, {"error": "slow down"}, {"Retry-After": "600"}))
+
+    with pytest.raises(APIError) as exc:
+        post_json(f"{server.url}/v1", {}, {"model": "m"})
+
+    assert exc.value.status == 429
+    assert "gave up" in str(exc.value)
+    assert "GLLM_RETRY_BUDGET" in str(exc.value), "the message must name the escape hatch"
+    assert no_sleep == [], "it must not sleep at all before giving up"
+    assert len(server.requests) == 1
+
+
+def test_giving_up_says_why_on_stderr(server, no_sleep, capsys):
+    server.script.append((429, {}, {"Retry-After": "600"}))
+    with pytest.raises(APIError):
+        post_json(f"{server.url}/v1", {}, {"model": "m"})
+    err = capsys.readouterr().err
+    assert "HTTP 429" in err
+    assert "giving up" in err
+    assert "600s" in err
+
+
+def test_each_retry_is_announced_with_its_attempt_number(server, no_sleep, capsys):
+    server.script.extend([(503, {}, {}), (503, {}, {}), (200, {"ok": True}, {})])
+
+    assert post_json(f"{server.url}/v1", {}, {"model": "m"}) == {"ok": True}
+
+    lines = [ln for ln in capsys.readouterr().err.splitlines() if "retrying" in ln]
+    assert len(lines) == 2
+    assert "(1/3)" in lines[0]
+    assert "(2/3)" in lines[1]
+    assert "HTTP 503" in lines[0]
+    # The host, not the full URL — the path is noise in a progress line.
+    assert "127.0.0.1" in lines[0]
+
+
+def test_the_budget_is_spent_across_retries_not_per_retry(server, monkeypatch, capsys):
+    """Three 12s waits would be 36s; the 30s budget stops the third."""
+    monkeypatch.setattr(_http, "RETRY_BUDGET", 30.0)
+    slept: list[float] = []
+    monkeypatch.setattr(_http.time, "sleep", slept.append)
+    server.script.extend([(429, {}, {"Retry-After": "12"})] * 4)
+
+    with pytest.raises(APIError) as exc:
+        post_json(f"{server.url}/v1", {}, {"model": "m"})
+
+    assert slept == [12.0, 12.0], "third wait exceeds the 6s remaining"
+    assert "gave up" in str(exc.value)
+
+
+def test_a_connection_failure_beyond_the_budget_raises_the_original_error(monkeypatch):
+    """Not an APIError: there was no response, so the socket error is the truth."""
+    monkeypatch.setattr(_http, "RETRY_BUDGET", 0.0)
+    with pytest.raises(OSError):
+        post_json("http://127.0.0.1:1/v1", {}, {"model": "m"}, max_retries=3)
