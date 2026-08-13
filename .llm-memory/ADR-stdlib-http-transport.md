@@ -65,7 +65,7 @@ Done: `deepseek`, `zai`, `kimi`, `openai_compat`. Remaining: `openai`, `azure_op
 
 ## Verifying a hoisted key needs a DIFFERENTIAL, not a successful call
 
-The `extra_body` hoists are the risky part of every conversion, and a single successful call cannot verify one: a silently-dropped key looks exactly like an honoured one. DeepSeek happened to give a positive signal (`reasoning_tokens: 6`), but Z.AI's `reasoning_tokens` reads 0 even with thinking on, so the same trick was unavailable.
+The `extra_body` hoists are the risky part of every conversion, and a single successful call cannot verify one: a silently-dropped key looks exactly like an honoured one. DeepSeek happened to give a positive signal (`reasoning_tokens: 6`); on Z.AI that signal is **per-tier** — `glm-4.5-flash` reports 0 even with thinking on, while `glm-4.7` and `glm-5.2` report real values (315 and 95 on the same prompt). Do not read one GLM model's 0 as a provider-wide fact, as this note first did.
 
 What works: send the same request twice through `_http`, differing **only** in the hoisted key, and diff the replies. On `glm-4.5-flash` 2026-08-13:
 
@@ -74,7 +74,9 @@ What works: send the same request twice through `_http`, differing **only** in t
 | `enabled` | 847 chars | 300 (hit the cap) | `''` |
 | `disabled` | 0 chars | 3 | `1081` |
 
-So top-level `thinking` **is** honoured by Z.AI. Use this shape for the remaining conversions rather than trusting a 200.
+So top-level `thinking` **is** honoured by Z.AI. Use this shape for the remaining conversions rather than trusting a 200. Confirmed again on the tiers that report reasoning tokens: `glm-5.2` and `glm-4.7` at `-r high` returned 95 and 315 reasoning tokens with the correct answer.
+
+What this method does **not** settle is whether an *effort value* is honoured. `glm-5.2` at `-r low` (→`high`) vs `-r xhigh` (→`max`) gave 377 vs 411 reasoning tokens — a 9% gap on one sample each, indistinguishable from sampling noise. A binary key flips a behaviour you can see; a graded one needs repeated sampling per rung, and an easy prompt may not separate the rungs at all. `reasoning_effort` **gating** (which models receive the parameter) is unit-tested instead; whether `max` thinks harder than `high` on GLM is unverified.
 
 Incidental but useful: the `enabled` row is the output-starvation of [[ADR-output-budget-resolution]] reproduced on a third provider — 300 tokens of budget, all of it spent on the trace, **empty** answer.
 
