@@ -51,6 +51,34 @@ Three different extraction shapes, one per surface, and none of them interchange
 
 The warning is deliberately **not** silenced by `-q`: that flag is `--quiet-effort`, scoped to the effort-remap notice, and truncation is a correctness signal rather than chatter. Verified live on deepseek both ways — `--max-tokens 12` warned with `stop_reason='length'`, a complete answer reported `"truncated":false` and printed nothing.
 
+## The output budget shares the context window — measured, not assumed
+
+`input_tokens + max_tokens <= context_window` is **enforced**, and the generous per-model default above is exactly what makes it bite. Established against GLM (`glm-4.5-flash`) 2026-08-13 by separating the causes:
+
+| probe | input | max_tokens | sum | result |
+|---|---|---|---|---|
+| A | tiny | 120,000 | — | 400 `1210`: `max_tokens ... 限制数值范围[1,98304]` — the **output ceiling**, a different axis |
+| B1 | 65,017 | 4,096 | 69,113 | ok — so that input alone is legal |
+| B2 | 65,017 | 98,304 | 163,321 | 400 `1261 Prompt exceeds max length` |
+| — | 65,017 | 66,000 | 131,017 | ok |
+| — | 65,017 | 66,100 | 131,117 | 400 |
+
+Both halves of B2 are legal on their own (A fixes the output ceiling at 98,304; B1 clears the input), so only the sum explains it. The last two rows bracket the true window at **131,072**.
+
+Two traps in that data:
+- **The provider's error misattributes the cause.** `Prompt exceeds max length` when the prompt was 65,017 of 131,072. Nobody debugging that would suspect `max_tokens`, which is the case for gllm doing the arithmetic itself.
+- **The registry was wrong**, and a pre-flight check inherits whatever it says. `glm-4.5-flash` was registered at 128,000 — disproved outright, since sum 131,017 succeeded. `gemini-3-flash-preview` was registered at 200,000 against the live API's 1,048,576 (understated 5x), and `gemini-3.1-pro-preview` at 1,000,000 vs 1,048,576. All three corrected. **The other 19 zai rows still carry the unverified 128,000 and are therefore suspect.** Where a provider's `models.list()` reports limits (Gemini does, OpenAI-compatible hosts do not), probing beats hardcoding — the same argument as [[ADR-model-listing-live-probe]].
+
+## `_clamp_to_context`: only lowers, and only gllm's own number
+
+The default budget is shrunk to `context_window - estimated_input` when that is smaller. An explicit `--max-tokens` never reaches the clamp — same principle as everything else here.
+
+`_CHARS_PER_TOKEN = 3.0`, deliberately pessimistic against the usual rule of thumb of 4: the B1 input measured 222,499 chars → 65,017 tokens, i.e. **3.42 chars/token**, so /4 would have *under*-counted by 17% and under-counting is the direction that 400s. Verified end to end: the exact B2 request that failed now succeeds on the default budget, clamped to 56,889 (sum 121,906). The estimate ran 14% high, which is the harmless direction.
+
+**Attachments disable the clamp.** Image and PDF-page cost is a function of pixel dimensions and page count, not character length, so there is no honest estimate to make; the budget is left alone and the API stays the backstop. Do not "improve" this with an invented per-attachment constant.
+
+When the clamp lands below the reasoning floor, it warns — the trace itself may not fit, and the answer will likely come back truncated (which `Response.truncated` now catches).
+
 ## Behaviour change to know about
 
 Kimi's floor was **unconditional** (16000 even without `-r`), so a plain Kimi call now defaults to `DEFAULT_MAX_OUTPUT` like every other provider. Kimi publishes no fixed ceiling — k3's limit is `context - prompt_tokens` — so there is no honest `max_output` to put in the registry for it yet.

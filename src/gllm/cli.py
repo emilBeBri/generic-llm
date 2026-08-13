@@ -33,7 +33,7 @@ from .adapters._capabilities import (
 )
 from .config import work_env
 from .domain import Attachment, Request
-from .models import MODELS, max_output_for, wire_id_for
+from .models import MODELS, context_window_for, max_output_for, wire_id_for
 from .ports import LLMProvider
 from .providers import DISCOVERABLE_PROVIDERS, PROVIDERS
 from .routing import WORK_PROVIDER_REDIRECTS, effective_model, provider_for
@@ -50,6 +50,15 @@ CONFIG_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 # several providers, and an unknown model is exactly where a guess is worst.
 DEFAULT_MAX_OUTPUT = 4096
 
+# Chars per token, for sizing the default output budget against the context
+# window. Deliberately pessimistic: the usual rule of thumb is 4, but 222,499
+# chars of Danish filler measured 65,017 input tokens on GLM — 3.42 chars/token,
+# so /4 would have UNDER-counted by 17%. Under-counting is the direction that
+# 400s, so this rounds the other way. Only ever used to make the budget SMALLER,
+# which is why a sloppy estimate is tolerable here and would not be for an
+# input-size *refusal*.
+_CHARS_PER_TOKEN = 3.0
+
 
 def _resolve_max_tokens(
     explicit: int | None,
@@ -58,6 +67,8 @@ def _resolve_max_tokens(
     wire_effort: str,
     *,
     quiet: bool,
+    input_chars: int = 0,
+    has_attachments: bool = False,
 ) -> int:
     """The output budget actually sent, resolved once for every adapter.
 
@@ -82,7 +93,8 @@ def _resolve_max_tokens(
     )
 
     if explicit is None:
-        return max(max_output_for(model) or DEFAULT_MAX_OUTPUT, floor)
+        want = max(max_output_for(model) or DEFAULT_MAX_OUTPUT, floor)
+        return _clamp_to_context(want, floor, model, input_chars, has_attachments, quiet)
 
     if explicit >= floor:
         return explicit
@@ -102,6 +114,55 @@ def _resolve_max_tokens(
             file=sys.stderr,
         )
     return explicit
+
+
+def _clamp_to_context(
+    want: int,
+    floor: int,
+    model: str,
+    input_chars: int,
+    has_attachments: bool,
+    quiet: bool,
+) -> int:
+    """Shrink gllm's OWN default so input + output still fits the context window.
+
+    The output budget is not a separate allowance — it shares the context window
+    with the prompt. Verified to the token against GLM (context 131,072): a
+    65,017-token input plus `max_tokens=66,000` succeeds at 131,017, and plus
+    66,100 fails at 131,117. Both the input alone and that `max_tokens` alone are
+    legal, so only the sum can explain it.
+
+    Which makes this necessary rather than tidy: defaulting the budget to a
+    model's full output ceiling (see `_resolve_max_tokens`) eats input headroom.
+    On the six 200k-context Claude rows a 64,000 default leaves ~136,000 tokens
+    for input, so a large document that used to fit now 400s — and the provider
+    blames the prompt for it. GLM answers `1261 "Prompt exceeds max length"` when
+    the prompt was 65,017 of 131,072, which is not a diagnosis anyone can act on.
+
+    Only ever lowers, and only a value gllm chose: an explicit `--max-tokens`
+    never reaches here.
+    """
+    if has_attachments:
+        # Image and PDF-page cost is a function of pixel dimensions and page
+        # count, not of character length, so there is no honest estimate to make
+        # here. Leave the budget alone and let the API be the backstop rather
+        # than clamp on a number that means nothing.
+        return want
+
+    headroom = context_window_for(model) - int(input_chars / _CHARS_PER_TOKEN)
+    if headroom >= want:
+        return want
+    if headroom < floor and not quiet:
+        # Below this the reasoning trace itself may not fit, so the answer is
+        # likely to come back truncated (which `Response.truncated` will catch).
+        print(
+            f"gllm: input leaves only ~{max(headroom, 0)} of "
+            f"{model}'s {context_window_for(model)}-token context for output, "
+            f"under the {floor} reasoning wants. The answer may be truncated; "
+            f"shorten the input or pick a longer-context model.",
+            file=sys.stderr,
+        )
+    return max(headroom, 1)
 
 
 def _load_user_env_file(path: Path) -> None:
@@ -630,18 +691,6 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
 
-    try:
-        max_tokens = _resolve_max_tokens(
-            args.max_tokens,
-            provider_name,
-            args.model,
-            wire_effort,
-            quiet=args.quiet_effort,
-        )
-    except ValueError as e:
-        print(f"gllm: {e}", file=sys.stderr)
-        return 2
-
     if model_was_defaulted:
         print(
             f"{args.model}:{args.reasoning}" if args.reasoning else args.model,
@@ -687,6 +736,22 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, json.JSONDecodeError) as e:
             print(f"gllm: --schema: {e}", file=sys.stderr)
             return 2
+
+    try:
+        max_tokens = _resolve_max_tokens(
+            args.max_tokens,
+            provider_name,
+            args.model,
+            wire_effort,
+            quiet=args.quiet_effort,
+            # Resolved here rather than earlier because the clamp needs the
+            # prompt: the output budget shares the context window with it.
+            input_chars=len(prompt) + len(system or ""),
+            has_attachments=bool(attachments),
+        )
+    except ValueError as e:
+        print(f"gllm: {e}", file=sys.stderr)
+        return 2
 
     request = Request(
         prompt=prompt,

@@ -103,3 +103,72 @@ def test_a_value_above_the_hard_minimum_but_below_headroom_is_allowed(capsys):
 
 def test_without_reasoning_there_is_no_floor_at_all():
     assert resolve(1, "anthropic", "claude-opus-4-5") == 1
+
+
+# --- clamping the default against the context window ----------------------
+#
+# Verified live against GLM (context 131,072): a 65,017-token input plus
+# max_tokens=66,000 succeeds at 131,017 and plus 66,100 fails at 131,117, with
+# both halves legal on their own. So the sum is enforced and gllm's own generous
+# default has to yield to it.
+
+def test_a_small_prompt_does_not_disturb_the_default():
+    assert resolve(None, "anthropic", "claude-opus-5") == 128_000
+
+
+def test_a_large_input_shrinks_the_default_budget():
+    # claude-sonnet-4-5: 200k context, 64k documented output ceiling. 450k chars
+    # is 150k tokens at the pessimistic divisor, leaving 50k of headroom — less
+    # than the ceiling, so the ceiling has to give way.
+    got = cli._resolve_max_tokens(
+        None, "anthropic", "claude-sonnet-4-5", "", quiet=True, input_chars=450_000
+    )
+    assert got == 50_000
+
+
+def test_the_clamp_never_raises_the_budget():
+    got = cli._resolve_max_tokens(
+        None, "anthropic", "claude-sonnet-4-5", "", quiet=True, input_chars=10
+    )
+    assert got == 64_000, "headroom far exceeds the ceiling; the ceiling still wins"
+
+
+def test_an_explicit_value_is_never_clamped():
+    """The clamp only ever lowers a number gllm chose for itself."""
+    got = cli._resolve_max_tokens(
+        None, "anthropic", "claude-sonnet-4-5", "", quiet=True, input_chars=590_000
+    )
+    assert got < 64_000
+    explicit = cli._resolve_max_tokens(
+        64_000, "anthropic", "claude-sonnet-4-5", "", quiet=True, input_chars=590_000
+    )
+    assert explicit == 64_000
+
+
+def test_clamping_below_the_reasoning_floor_warns(capsys):
+    got = cli._resolve_max_tokens(
+        None, "anthropic", "claude-sonnet-4-5", "high",
+        quiet=False, input_chars=594_000,
+    )
+    assert got < REASONING_MIN_OUTPUT
+    err = capsys.readouterr().err
+    assert "context for output" in err
+    assert "truncated" in err
+
+
+def test_attachments_disable_the_clamp(capsys):
+    """Image and PDF-page cost is not a function of character length, so there
+    is no honest estimate — leave the budget alone rather than invent one."""
+    got = cli._resolve_max_tokens(
+        None, "anthropic", "claude-sonnet-4-5", "", quiet=False,
+        input_chars=590_000, has_attachments=True,
+    )
+    assert got == 64_000
+    assert capsys.readouterr().err == ""
+
+
+def test_the_clamp_stays_positive_even_when_input_fills_the_window():
+    got = cli._resolve_max_tokens(
+        None, "anthropic", "claude-sonnet-4-5", "", quiet=True, input_chars=10_000_000
+    )
+    assert got == 1
