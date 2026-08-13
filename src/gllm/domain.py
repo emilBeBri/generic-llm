@@ -58,11 +58,22 @@ class Request:
     wire_effort: str = ""
 
 
-# Every provider's own word for "I stopped because the output budget ran out".
+# Every provider's own word for "I stopped early because I ran out of room".
 # Compared case-folded, which is what lets Gemini's `MAX_TOKENS` enum name share
 # an entry with Anthropic's `max_tokens`. Anything else — "stop", "end_turn",
 # "tool_use" — is a complete answer.
-_TRUNCATION_REASONS = frozenset({"max_tokens", "max_output_tokens", "length"})
+#
+# `model_context_window_exceeded` is Anthropic's separate reason for running out
+# of CONTEXT rather than output budget (the input plus the generation overflowed
+# the window, not the `max_tokens` cap). Different cause, identical consequence
+# for a reader: the answer stops mid-thought. Found by reading bebri-chat, which
+# handles it where gllm did not.
+_TRUNCATION_REASONS = frozenset({
+    "max_tokens",
+    "max_output_tokens",
+    "length",
+    "model_context_window_exceeded",
+})
 
 
 @dataclass

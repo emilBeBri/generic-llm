@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import pytest
 
+from gllm._http import wrap
 from gllm.adapters import anthropic as an
 from gllm.adapters.anthropic import (
     ANTHROPIC_BASE_URL,
     AnthropicProvider,
     final_message_from_events,
+    raise_if_refused,
 )
 from gllm.adapters.azure_anthropic import AzureAnthropicProvider, _normalize_foundry_url
 from gllm.domain import Request
@@ -237,3 +239,74 @@ def test_azure_requires_both_key_and_endpoint(monkeypatch):
     monkeypatch.delenv("AZURE_ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="AZURE_ANTHROPIC_API_KEY is not set"):
         AzureAnthropicProvider()
+
+
+# --- stop reasons that mean "no usable answer" ----------------------------
+#
+# Both learned from bebri-chat's adapter, which handled them where gllm did not.
+# The docs list the full enum: end_turn, max_tokens, stop_sequence, tool_use,
+# pause_turn, refusal, model_context_window_exceeded.
+
+def test_a_refusal_raises_rather_than_printing_a_blank_line():
+    """A refusal comes back with NO text block, so joining text blocks yields
+    "" and gllm would exit 0 having printed nothing."""
+    msg = wrap({
+        "stop_reason": "refusal",
+        "stop_details": {"category": "cyber", "explanation": "malware assistance"},
+        "content": [],
+        "model": "claude-opus-5",
+    })
+    with pytest.raises(RuntimeError, match="refused this request"):
+        raise_if_refused(msg)
+
+
+def test_the_refusal_error_names_the_policy_category_and_explanation():
+    msg = wrap({
+        "stop_reason": "refusal",
+        "stop_details": {"category": "bio", "explanation": "pathogen synthesis"},
+    })
+    with pytest.raises(RuntimeError) as exc:
+        raise_if_refused(msg)
+    assert "bio" in str(exc.value)
+    assert "pathogen synthesis" in str(exc.value)
+
+
+def test_a_refusal_with_no_details_still_raises():
+    """stop_details.explanation is nullable and the docs warn it is not stable,
+    so it is surfaced but never required."""
+    with pytest.raises(RuntimeError, match="unknown"):
+        raise_if_refused(wrap({"stop_reason": "refusal"}))
+
+
+@pytest.mark.parametrize("reason", ["end_turn", "max_tokens", "tool_use", "pause_turn"])
+def test_every_other_stop_reason_passes_through(reason):
+    raise_if_refused(wrap({"stop_reason": reason, "content": []}))
+
+
+def test_context_window_exceeded_counts_as_truncation():
+    """A different cause from max_tokens — input plus generation overflowed the
+    window rather than hitting the cap — but the same consequence for a reader."""
+    from gllm.domain import Response
+
+    response = Response(
+        text="cut off mid-",
+        model="claude-opus-5",
+        provider="anthropic",
+        stop_reason="model_context_window_exceeded",
+    )
+    assert response.truncated
+
+
+def test_the_refusal_guard_runs_in_the_real_generate_path(provider, monkeypatch):
+    monkeypatch.setattr(
+        an, "post_json",
+        lambda *a, **kw: {
+            "model": "claude-opus-5",
+            "stop_reason": "refusal",
+            "stop_details": {"category": "frontier_llm", "explanation": None},
+            "content": [],
+            "usage": {"input_tokens": 5, "output_tokens": 0},
+        },
+    )
+    with pytest.raises(RuntimeError, match="frontier_llm"):
+        provider.generate(Request(prompt="hej", model="claude-opus-5"))

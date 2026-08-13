@@ -40,6 +40,7 @@ from .anthropic import (
     _anthropic_content,
     _stop_reason,
     final_message_from_events,
+    raise_if_refused,
 )
 
 
@@ -136,6 +137,7 @@ class AzureAnthropicProvider(LLMProvider):
             )
         )
 
+        raise_if_refused(msg)
         text = "".join(
             b.text for b in msg.content if getattr(b, "type", None) == "text"
         )

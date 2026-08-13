@@ -64,6 +64,33 @@ def _stop_reason(msg) -> str | None:
     return getattr(msg, "stop_reason", None)
 
 
+def raise_if_refused(msg) -> None:
+    """Turn a policy refusal into a loud error instead of a blank line.
+
+    `stop_reason == "refusal"` means streaming classifiers intervened, and the
+    message comes back with **no text block** — so joining text blocks yields
+    `""`, gllm prints an empty line and exits 0. Indistinguishable from a model
+    that had nothing to say, which is the same silent-empty-output failure the
+    OpenAI Responses path guards against (`_output_text`).
+
+    `stop_details` carries a policy `category` ("cyber", "bio", "frontier_llm",
+    …) and a human-readable `explanation` that the docs warn is not stable — so
+    it is surfaced verbatim rather than matched on.
+
+    gllm handled neither this nor `model_context_window_exceeded` until reading
+    bebri-chat's adapter, which did.
+    """
+    if (getattr(msg, "stop_reason", None) or "").lower() != "refusal":
+        return
+    details = getattr(msg, "stop_details", None)
+    category = getattr(details, "category", None) or "unknown"
+    explanation = getattr(details, "explanation", None)
+    raise RuntimeError(
+        f"anthropic refused this request (policy category: {category})"
+        + (f": {explanation}" if explanation else "")
+    )
+
+
 def final_message_from_events(events) -> dict:
     """Rebuild the complete Message from an Anthropic SSE event stream.
 
@@ -207,6 +234,7 @@ class AnthropicProvider(LLMProvider):
         else:
             msg = wrap(post_json(url, self.headers, kwargs))
 
+        raise_if_refused(msg)
         text = "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")
 
         return Response(
