@@ -19,6 +19,7 @@ import json
 import mimetypes
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import pricing
@@ -570,7 +571,8 @@ def _parser() -> argparse.ArgumentParser:
             "Emit one machine-readable JSON usage record to stderr, prefixed "
             "'gllm-usage ' — provider, model, reasoning, input/output/cache/"
             "reasoning tokens, derived cost_usd (from the llm-price-tracker "
-            "book, offline), plus the provider's verbatim usage in usage_raw. "
+            "book, offline) with price_window naming the peak/off-peak rate "
+            "applied, plus the provider's verbatim usage in usage_raw. "
             "stdout stays the model text only."
         ),
     )
@@ -809,6 +811,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         provider = _build_provider(provider_name)
+        # Stamped at DISPATCH, not after the response: vendors with time-of-day
+        # rates bill by when the request lands, and a call that starts at 03:58
+        # UTC and returns at 04:02 must not be repriced by having been slow.
+        sent_at = datetime.now(UTC)
         response = provider.generate(request)
     except Exception as e:
         print(f"gllm: {type(e).__name__}: {e}", file=sys.stderr)
@@ -847,6 +853,9 @@ def main(argv: list[str] | None = None) -> int:
         # the provider's own numbers for exact per-model cost accounting; cost_usd
         # is derived from the llm-price-tracker book plus the local overrides
         # (priced_as names the matched entry, null when neither prices the model).
+        # price_window says which side of a vendor's peak/off-peak split was
+        # billed, so a 2x cost_usd swing between two identical calls is legible
+        # as DeepSeek's published policy rather than as a gllm bug.
         usage = {
             "input_tokens": response.input_tokens,
             "output_tokens": response.output_tokens,
@@ -869,7 +878,7 @@ def main(argv: list[str] | None = None) -> int:
             "model": response.model,
             "reasoning": request.reasoning,
             **usage,
-            **pricing.price_report(response.provider, candidates, usage),
+            **pricing.price_report(response.provider, candidates, usage, sent_at),
             "max_tokens": request.max_tokens,
             # The provider's own word, verbatim, plus gllm's reading of it — a
             # machine consumer should not have to know that Gemini says

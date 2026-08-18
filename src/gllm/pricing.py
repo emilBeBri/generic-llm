@@ -13,7 +13,8 @@ here rather than pushing the job onto every caller.
 
 Three pieces, separable for testing:
 - _book_entry()  — gllm model name -> book entry (exact, then the tracker's
-                   dot/dash-insensitive fallback). `_load_book` is the seam.
+                   dot/dash-insensitive fallback), resolved at a moment for
+                   vendors that charge by time of day. `_load_book` is the seam.
 - compute_cost() — pure: provider-aware $ from an entry + token counts.
 - load_overrides()/match_override() — the bundled + user-overlay gap layer.
 """
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,13 +45,32 @@ def _load_book():
     return load_book()
 
 
-def _book_entry(model: str) -> tuple[str, dict] | None:
+def _book_entry(model: str, at: datetime | None = None) -> tuple[str, dict] | None:
     """(book id, entry dict) for a model, or None.
 
     The tracker's get_entry does exact-id first, then a UNIQUE dot/dash-folded
     match (book Anthropic ids are page slugs like `claude-opus-4.6`; gllm keys
     are wire-style `claude-opus-4-6`). Namespaced keys (`groq:`, `regolo:`)
     can never resolve here — they are priced by the override layer.
+
+    `at` is the UTC instant the call was made. Some vendors charge by time of
+    day — DeepSeek doubles input, output AND cache-hit inside published peak
+    windows — and the book models that structurally: the scalar fields are the
+    off-peak rate, `peak` nests the peak one, `peak_windows` selects between
+    them. `for_time` is the book's own resolver, so the hours stay the
+    vendor's fact and gllm never writes a clock time down. Without `at` the
+    off-peak scalar applies, which is the tracker's own default and the only
+    deterministic answer for a caller that cannot name the moment.
+
+    A tz-aware `at` is converted to UTC first. `for_time` compares `.hour`
+    against UTC windows without converting, so handing it 03:00+02:00 would
+    read as hour 3 when the instant is 01:00 UTC — an off-by-a-zone that
+    silently doubles or halves the bill. A naive `at` is taken as already-UTC:
+    guessing a zone for a bare wall clock is the same bug wearing a hat.
+
+    The returned dict carries `price_window`: "peak"/"off_peak" when a
+    time-variant rate was actually resolved, None when the row has no windows
+    (the common case) or no moment was given.
     """
     if not model:
         return None
@@ -59,11 +80,19 @@ def _book_entry(model: str) -> tuple[str, dict] | None:
     if entry is None or entry.standard is None:
         return None
     p = entry.standard
+    window = None
+    if at is not None and p.peak is not None and p.peak_windows:
+        if at.tzinfo is not None:
+            at = at.astimezone(UTC)
+        resolved = p.for_time(at)
+        window = "peak" if resolved is p.peak else "off_peak"
+        p = resolved
     return entry.id, {
         "input": p.input,
         "output": p.output,
         "input_cached": p.cache_read,
         "cache_write": p.cache_write,
+        "price_window": window,
     }
 
 
@@ -185,11 +214,26 @@ def match_override(model: str, overrides: dict) -> tuple[str, dict] | None:
     return None
 
 
-def price_report(provider: str, models: list[str], usage: dict) -> dict:
+def price_report(
+    provider: str, models: list[str], usage: dict, at: datetime | None = None
+) -> dict:
     """Convenience for the CLI: try local overrides first, then the price book;
     match the first model name that hits; compute cost. Never raises — pricing
-    must not break the main output. Returns {cost_usd, priced_as, price_source}
-    with price_source in {override, book, none}."""
+    must not break the main output. Returns {cost_usd, priced_as, price_source,
+    price_window} with price_source in {override, book, none}.
+
+    `at` (UTC) is the moment the call was made; it only matters for a book row
+    with published peak windows. `price_window` names which rate was actually
+    applied ("peak"/"off_peak") so a 2x swing in cost_usd reads as the vendor's
+    policy rather than as a bug in gllm.
+
+    An override always reports `price_window: null`, and that is not a
+    rounding of the truth — the override schema is a flat {input, output,
+    input_cached} with no time dimension, so a model priced there genuinely
+    has no time-of-day rate applied. Overrides are consulted FIRST, so
+    overriding a model the book prices by the hour silently flattens it to one
+    rate; `price_source: "override"` next to a null window is the tell.
+    """
     try:
         overrides = load_overrides()
         for m in models:
@@ -200,16 +244,28 @@ def price_report(provider: str, models: list[str], usage: dict) -> dict:
                     "cost_usd": compute_cost(provider, entry, usage),
                     "priced_as": key,
                     "price_source": "override",
+                    "price_window": None,
                 }
         for m in models:
-            book_hit = _book_entry(m)
+            book_hit = _book_entry(m, at)
             if book_hit:
                 key, entry = book_hit
                 return {
                     "cost_usd": compute_cost(provider, entry, usage),
                     "priced_as": key,
                     "price_source": "book",
+                    "price_window": entry.get("price_window"),
                 }
-        return {"cost_usd": None, "priced_as": None, "price_source": "none"}
+        return {
+            "cost_usd": None,
+            "priced_as": None,
+            "price_source": "none",
+            "price_window": None,
+        }
     except Exception:
-        return {"cost_usd": None, "priced_as": None, "price_source": "none"}
+        return {
+            "cost_usd": None,
+            "priced_as": None,
+            "price_source": "none",
+            "price_window": None,
+        }

@@ -8,6 +8,9 @@ All network-free by construction now: the book is a committed offline artifact
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta, timezone
+
+import pytest
 
 import gllm.cli as cli
 import gllm.pricing as pricing
@@ -137,7 +140,12 @@ def test_price_report_never_raises(monkeypatch):
     monkeypatch.setattr(pricing, "_load_book", _boom)
     monkeypatch.setattr(pricing, "load_overrides", lambda: {})
     out = pricing.price_report("openai", ["gpt-5.1"], {"input_tokens": 10})
-    assert out == {"cost_usd": None, "priced_as": None, "price_source": "none"}
+    assert out == {
+        "cost_usd": None,
+        "priced_as": None,
+        "price_source": "none",
+        "price_window": None,
+    }
 
 
 # --- local overrides --------------------------------------------------------
@@ -217,3 +225,180 @@ def test_usage_record_includes_cost(monkeypatch, capsys):
     assert rec["priced_as"] == "claude-haiku-4.5"
     assert rec["cost_usd"] == 1.0
     assert rec["price_source"] == "book"
+
+
+# --- time-of-day (peak) pricing ---------------------------------------------
+# DeepSeek bills 2x inside published UTC windows. The book models that
+# structurally, so gllm resolves it per call rather than storing an hour.
+
+_PEAK_WINDOWS = (("01:00", "04:00"), ("06:00", "10:00"))
+
+
+def _peak_book():
+    """A DeepSeek-shaped row: off-peak scalars plus a 2x peak variant, next to
+    a flat-rate neighbour that the moment must not touch."""
+    from llm_price_tracker.models import TimeWindow
+
+    return PriceBook(
+        updated_at="2026-08-18",
+        models={
+            "deepseek-v4-flash": ModelEntry(
+                id="deepseek-v4-flash",
+                vendor="deepseek",
+                tiers={STANDARD: Price(
+                    input=0.22, output=0.66, cache_read=0.007,
+                    peak=Price(input=0.44, output=1.32, cache_read=0.014),
+                    peak_windows=[TimeWindow(start=s, end=e) for s, e in _PEAK_WINDOWS],
+                )},
+            ),
+            "gpt-5.1": ModelEntry(
+                id="gpt-5.1", vendor="openai",
+                tiers={STANDARD: Price(input=1.25, output=10)},
+            ),
+        },
+    )
+
+
+_1M = {"input_tokens": 1_000_000, "output_tokens": 1_000_000}
+# Instants named against the fixture's OWN windows above, not a vendor's.
+_IN_WINDOW = datetime(2026, 8, 18, 2, 0, tzinfo=UTC)   # inside 01:00-04:00
+_BETWEEN_WINDOWS = datetime(2026, 8, 18, 5, 0, tzinfo=UTC)
+
+
+def test_peak_moment_bills_the_peak_rate(monkeypatch):
+    _use_book(monkeypatch, _peak_book())
+    key, entry = pricing._book_entry("deepseek-v4-flash", _IN_WINDOW)
+    assert entry["input"] == 0.44
+    assert entry["output"] == 1.32
+    assert entry["input_cached"] == 0.014   # cache hits double too
+    assert entry["price_window"] == "peak"
+
+
+def test_off_peak_moment_bills_the_scalar(monkeypatch):
+    _use_book(monkeypatch, _peak_book())
+    _, entry = pricing._book_entry("deepseek-v4-flash", _BETWEEN_WINDOWS)
+    assert entry["input"] == 0.22
+    assert entry["price_window"] == "off_peak"
+
+
+def test_no_moment_prices_off_peak(monkeypatch):
+    # The tracker's own default, and the only deterministic answer for a
+    # caller that cannot name the moment.
+    _use_book(monkeypatch, _peak_book())
+    _, entry = pricing._book_entry("deepseek-v4-flash")
+    assert entry["input"] == 0.22
+    assert entry["price_window"] is None
+
+
+def test_non_utc_moment_is_converted_not_read_hour_for_hour(monkeypatch):
+    # 03:00+02:00 IS 01:00 UTC — inside the window. The book's contains()
+    # compares .hour against UTC without converting, so failing to normalise
+    # here reads hour 3 and silently halves the bill.
+    _use_book(monkeypatch, _peak_book())
+    shifted = datetime(2026, 8, 18, 3, 0, tzinfo=timezone(timedelta(hours=2)))
+    _, entry = pricing._book_entry("deepseek-v4-flash", shifted)
+    assert entry["price_window"] == "peak"
+
+    # And the reverse: 03:00 UTC read as +02:00 would land outside.
+    _, entry = pricing._book_entry(
+        "deepseek-v4-flash",
+        datetime(2026, 8, 18, 5, 0, tzinfo=timezone(timedelta(hours=2))),  # 03:00Z
+    )
+    assert entry["price_window"] == "peak"
+
+
+def test_a_flat_rate_row_ignores_the_moment(monkeypatch):
+    # Most vendors have no time-of-day rate; those rows must be untouched, and
+    # must not claim a window they do not have.
+    _use_book(monkeypatch, _peak_book())
+    for at in (None, _IN_WINDOW, _BETWEEN_WINDOWS):
+        _, entry = pricing._book_entry("gpt-5.1", at)
+        assert entry["input"] == 1.25
+        assert entry["price_window"] is None
+
+
+def test_price_report_doubles_and_names_the_window(monkeypatch):
+    _use_book(monkeypatch, _peak_book())
+    monkeypatch.setattr(pricing, "load_overrides", lambda: {})
+
+    off = pricing.price_report("deepseek", ["deepseek-v4-flash"], _1M, _BETWEEN_WINDOWS)
+    peak = pricing.price_report("deepseek", ["deepseek-v4-flash"], _1M, _IN_WINDOW)
+
+    assert off["cost_usd"] == round(0.22 + 0.66, 6)
+    assert off["price_window"] == "off_peak"
+    assert peak["cost_usd"] == round(0.44 + 1.32, 6)
+    assert peak["price_window"] == "peak"
+    assert peak["cost_usd"] == round(2 * off["cost_usd"], 6)
+
+
+def test_an_override_flattens_the_hourly_rate_and_says_so(monkeypatch):
+    # Overrides are consulted BEFORE the book and their schema has no time
+    # dimension, so overriding an hourly-priced model pins it to one rate for
+    # good. That is allowed — it is the escape hatch — but it must be visible:
+    # price_source "override" beside a null window is the whole tell.
+    _use_book(monkeypatch, _peak_book())
+    monkeypatch.setattr(
+        pricing, "load_overrides",
+        lambda: {"deepseek-v4-flash": {"input": 0.22, "output": 0.66}},
+    )
+    out = pricing.price_report("deepseek", ["deepseek-v4-flash"], _1M, _IN_WINDOW)
+
+    assert out["price_source"] == "override"
+    assert out["price_window"] is None
+    assert out["cost_usd"] == round(0.22 + 0.66, 6)   # NOT the peak rate
+
+
+def test_the_real_book_deepseek_row_reaches_gllm_with_its_windows():
+    # Against the committed book, not a fixture: proves the peak data actually
+    # survives the flattening in _book_entry. The probe instant is derived from
+    # the book's own windows — gllm never writes a vendor's clock time down.
+    from llm_price_tracker.book import get_entry, load_book
+
+    price = get_entry("deepseek-v4-flash", load_book()).standard
+    if price.peak is None or not price.peak_windows:
+        pytest.skip("the committed book publishes no peak window for deepseek")
+
+    hour, minute = (int(x) for x in price.peak_windows[0].start.split(":"))
+    at = datetime(2026, 8, 18, hour, minute, tzinfo=UTC) + timedelta(minutes=1)
+    _, entry = pricing._book_entry("deepseek-v4-flash", at)
+    _, off = pricing._book_entry("deepseek-v4-flash")
+
+    assert entry["price_window"] == "peak"
+    assert entry["input"] > off["input"]
+
+
+# --- CLI emission of the window ---------------------------------------------
+
+class _FakeDeepSeek:
+    def generate(self, request):
+        return Response(
+            text="ok", model="deepseek-v4-flash", provider="deepseek",
+            input_tokens=1_000_000, output_tokens=1_000_000,
+        )
+
+
+class _FrozenClock:
+    """Stands in for cli.datetime so the dispatch stamp is deterministic."""
+
+    fixed = _IN_WINDOW
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls.fixed if tz is None else cls.fixed.astimezone(tz)
+
+
+def test_usage_record_reports_the_price_window(monkeypatch, capsys):
+    _wire(monkeypatch)
+    monkeypatch.setattr(cli, "_build_provider", lambda _name: _FakeDeepSeek())
+    monkeypatch.setattr(pricing, "_load_book", lambda: _peak_book())
+    monkeypatch.setattr(cli, "datetime", _FrozenClock)
+
+    rc = cli.main(["--usage", "-m", "deepseek-v4-flash", "prompt"])
+    assert rc == 0
+    line = next(
+        ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("gllm-usage ")
+    )
+    rec = json.loads(line[len("gllm-usage "):])
+
+    assert rec["price_window"] == "peak"
+    assert rec["cost_usd"] == round(0.44 + 1.32, 6)
