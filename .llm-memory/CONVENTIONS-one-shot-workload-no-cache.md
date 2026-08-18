@@ -178,9 +178,29 @@ Measured, pens problem, per 1k calls:
 | `-r low` | 33 | $0.06 | yes |
 | `-r none --native-effort` | **0** | **$0.02** | **4/4 yes** |
 
-**luna is still right with reasoning switched fully off**, on the exact problem
-flash-lite failed 0/4 without thinking. That is the cleanest statement of the
-gap between them: it is not that one thinks and the other does not.
+luna was still right with reasoning fully off *on that problem*, which
+flash-lite failed 0/4 without thinking — so the gap between them is not simply
+thinking-vs-not.
+
+**But `none` is NOT safe in general, and an early version of this note
+over-generalised from that single result.** A second problem (500 L tank, fill
+15 L/min against a drain of 5 L/min switched off at 20 min; answer 40) breaks
+it: at `-r none` luna gave 32.5, 37.5, 40 — 1/3 — while `-r low` and the
+medium default were 3/3. One problem is never enough to license "safe with
+reasoning off"; two rate phases were enough to expose it.
+
+| problem | `none` | `low` | `medium` (no flag) |
+|---|---|---|---|
+| tank, two rate phases | **1/3** | 3/3 | 3/3 |
+| train, time arithmetic | 3/3 | 3/3 | 3/3 |
+| marbles, probability (19/66) | 2/2 | 2/2 | 2/2 |
+| pens, 3-for-$2 + leftovers | 4/4 | — | 4/4 |
+
+**`low` and `medium` were indistinguishable on everything tested**, with `low`
+marginally cheaper (33 vs 45 thought tokens; $0.06 vs $0.08 per 1k). So the
+choice between them is a judgment call about tasks harder than these, not a
+measured win: medium's headroom is bought for ~$0.02 per 1,000 calls, and a
+wrong answer costs more than that. `none` is the one to actually avoid.
 
 Why an effort probe looks flat on luna: the same guide says the models "reason
 adaptively across reasoning [efforts], using fewer tokens for simpler tasks".
