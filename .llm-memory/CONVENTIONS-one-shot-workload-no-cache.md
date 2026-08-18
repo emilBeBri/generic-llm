@@ -121,13 +121,50 @@ thousands, price should not decide this — latency and capability should. Price
 only became decisive against gemini-3.5-flash, which is a genuine 15-25x
 outlier, not against any of these three.
 
-Standing verdict for gllm: **gpt-5.6-luna** as `DEFAULT_MODEL` — fastest
-measured, ~20x cheaper than gemini-3.5-flash, strict `--schema` (DeepSeek has
+## flash-lite's cheap/fast configuration is the one that CANNOT do arithmetic
+
+The finding that reverses the ranking above. A multi-step word problem (buy 17
+pens at 3-for-$2 plus $0.80 per leftover; correct answer $11.60), 4 runs each:
+
+| model / config | result |
+|---|---|
+| gemini-3.5-flash-lite, **no `-r`** | **0/4** — $12.20, $11.80, $12.00, $11.80 |
+| gemini-3.5-flash-lite, `-r low` | **4/4** correct (~255 thought tokens) |
+| gpt-5.6-luna, no `-r` | **4/4** correct |
+| deepseek-v4-flash, no `-r` | **4/4** correct |
+
+Note it is not merely wrong, it is *inconsistently* wrong — four runs, three
+different answers. That is the signature of no deliberation at all rather than
+a stable mistake, and it means a retry does not save you.
+
+So flash-lite's entire advantage — fastest, most concise, 0 thought tokens —
+exists only in the configuration that fails multi-step reasoning. Buying the
+fix costs the 3.5x thinking cliff ($0.65 -> $2.29 per 1k), which lands it at
+~5x luna, and luna gets the same answer right for free with no flag at all.
+
+**Easy traps do not discriminate.** Bat-and-ball ($0.05), counting r's in
+"strawberry raspberry" (6), and a transitive height ordering were all answered
+correctly by all three including flash-lite with zero thinking. A quality probe
+that uses only classic one-step traps will conclude, wrongly, that these models
+are equivalent. Reach for something needing two or three chained operations.
+
+Scope: n=4 on one problem type, deliberately superficial. It is enough to
+disqualify a default, not enough to rank luna against deepseek on quality —
+neither was ever wrong here.
+
+Standing verdict for gllm: **gpt-5.6-luna** as `DEFAULT_MODEL` — right for
+free where flash-lite's cheap configuration is not (see the arithmetic section), ~20x cheaper than gemini-3.5-flash, strict `--schema` (DeepSeek has
 none: gllm REFUSES `--schema` there rather than fake enforcement), full effort
 ladder, largest context. deepseek-v4-flash is for off-peak batch work where
 latency does not matter and nothing needs a schema: ~1.8x cheaper than luna
 off-peak, but MORE expensive at peak ($0.44 vs $0.40 per 1k of the measured
 call) and slower in both cases.
+
+`DEFAULT_EFFORT` gotcha: gllm's ladder is `LEVELS = (low, medium, high,
+xhigh)` — there is **no `none` rung**. `DEFAULT_EFFORT="none"` fails every call
+with exit 2 (loudly, which is the house style working). To run without
+thinking, set `DEFAULT_EFFORT=""` or omit the variable; both leave
+`reasoning=null` and, on Gemini, 0 thought tokens.
 
 **Untested:** DeepSeek's latency *during* its peak window — every sample above
 is off-peak. The hypothesis that it is slower when it is dearest is unmeasured;
