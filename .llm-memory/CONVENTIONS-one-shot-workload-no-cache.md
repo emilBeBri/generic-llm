@@ -80,6 +80,47 @@ Luna also won every latency cell, including against DeepSeek. gemini-3.5-flash
 was the SLOWEST of the three as well as the dearest, and the least predictable
 (short-prompt median 2.38s, worst case 4.66s).
 
+## `-r low` is NOT Gemini's floor — omitting `-r` entirely is
+
+Measured on gemini-3.5-flash-lite, same prompt: `-r low` produced **627-656
+thought tokens**; **no `-r` flag produced ZERO**, and cost fell 3.5x ($2.29 ->
+$0.65 per 1k). Gemini's `native_efforts` has no `none` rung, so nothing in the
+effort ladder reaches this — only the absence of the flag does. Passing `-r
+low` "to be cheap" on a Gemini model is a 3.5x cliff in the wrong direction.
+
+luna is not the same shape: with no flag it still emits 40-106 thought tokens,
+and costs about what `-r low` costs. Its ladder does have `none`.
+
+And the thinking tax is a Gemini-FAMILY trait, not a flash quirk: flash-lite
+thought 627-656 where flash thought 878-885. lite is cheaper because of its
+rate card, NOT because it thinks less.
+
+## MEASURED 2026-08-18 evening, no `-r` flag (the one-shot configuration)
+
+Four samples each, same B-tree prompt. `$` is per 1,000 calls.
+
+| model | visible out | thought | $ /1k | short | long | tok/s |
+|---|---|---|---|---|---|---|
+| gemini-3.5-flash-lite | 248-273 | **0** | $0.63-0.69 | **0.83s** | **1.93s** | **132.8** |
+| gpt-5.6-luna | 311-392 | 40-106 | $0.38-0.48 | 1.36s | 6.38s* | 103.1 |
+| deepseek-v4-flash | 369-419 | 105-129 | $0.27-0.30 | 1.41s | 5.08s | 63.4 |
+
+*luna's 6.38s came from a run that emitted 658 tokens — a verbosity outlier
+against its typical 311-392. Normalised per token it is ~0.97 s/100 tok against
+flash-lite's 0.75, so call it ~1.3x slower per token, not 3.3x.
+
+**flash-lite is the speed winner and the most concise** — it alone hit the
+"around 200 words" brief; luna and DeepSeek overshot by 25-60%. It is also
+~1.5x luna's cost and ~2.4x DeepSeek's, which matches the rate-card floor
+predicted before measuring (1.7x at zero thinking; 1.5x measured, the gap being
+its concision).
+
+**Perspective the ranking hides: these are fractions of a cent per call.**
+$0.27 vs $0.43 vs $0.66 per *thousand* calls. Unless the volume runs to tens of
+thousands, price should not decide this — latency and capability should. Price
+only became decisive against gemini-3.5-flash, which is a genuine 15-25x
+outlier, not against any of these three.
+
 Standing verdict for gllm: **gpt-5.6-luna** as `DEFAULT_MODEL` — fastest
 measured, ~20x cheaper than gemini-3.5-flash, strict `--schema` (DeepSeek has
 none: gllm REFUSES `--schema` there rather than fake enforcement), full effort
