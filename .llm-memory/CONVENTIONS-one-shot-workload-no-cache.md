@@ -160,11 +160,46 @@ latency does not matter and nothing needs a schema: ~1.8x cheaper than luna
 off-peak, but MORE expensive at peak ($0.44 vs $0.40 per 1k of the measured
 call) and slower in both cases.
 
-`DEFAULT_EFFORT` gotcha: gllm's ladder is `LEVELS = (low, medium, high,
-xhigh)` — there is **no `none` rung**. `DEFAULT_EFFORT="none"` fails every call
-with exit 2 (loudly, which is the house style working). To run without
-thinking, set `DEFAULT_EFFORT=""` or omit the variable; both leave
-`reasoning=null` and, on Gemini, 0 thought tokens.
+## Omitting `-r` is NOT "no reasoning" — it is the provider's default
+
+gllm sends no effort parameter when `-r` is absent (`if reasoning_on:` guards
+the kwarg), so the SERVER default applies, and that differs per provider.
+OpenAI's reasoning guide is explicit: *"If you omit `reasoning.effort`, GPT-5.6
+defaults to `medium` in both modes"*, and defaults are "model-dependent rather
+than universal". So bare `gllm -m gpt-5.6-luna` runs at **medium**, while bare
+`gllm -m gemini-3.5-flash-lite` runs at **zero** thought tokens (measured).
+Same absent flag, opposite meaning.
+
+Measured, pens problem, per 1k calls:
+
+| luna config | thought | $/1k | correct |
+|---|---|---|---|
+| no flag (= medium) | 45 | $0.08 | yes |
+| `-r low` | 33 | $0.06 | yes |
+| `-r none --native-effort` | **0** | **$0.02** | **4/4 yes** |
+
+**luna is still right with reasoning switched fully off**, on the exact problem
+flash-lite failed 0/4 without thinking. That is the cleanest statement of the
+gap between them: it is not that one thinks and the other does not.
+
+Why an effort probe looks flat on luna: the same guide says the models "reason
+adaptively across reasoning [efforts], using fewer tokens for simpler tasks".
+Sweeping low/medium/high produced 20-50 thought tokens at every rung — the knob
+is a ceiling, not a quota, so you cannot infer the active level from token
+counts.
+
+`DEFAULT_EFFORT` gotchas, both verified:
+
+* gllm's ladder is `LEVELS = (low, medium, high, xhigh)` — **no `none` rung**.
+  `DEFAULT_EFFORT="none"` fails every call with exit 2 (loudly — house style
+  working). Use `""` or omit the variable.
+* `none` is reachable only as `-r none --native-effort`, and `--native-effort`
+  **refuses to inherit `$DEFAULT_EFFORT` by design**, so zero-reasoning cannot
+  be set as an ambient default at all. It is a per-call flag or nothing.
+* `--native-effort` validates against the registry: `-r minimal
+  --native-effort` on luna is rejected with the model's real vocabulary
+  (`none, low, medium, high, xhigh, max`) — GPT-5.6 has no `minimal` rung even
+  though older GPT-5 docs describe one.
 
 **Untested:** DeepSeek's latency *during* its peak window — every sample above
 is off-peak. The hypothesis that it is slower when it is dearest is unmeasured;
