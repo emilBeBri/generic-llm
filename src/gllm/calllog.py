@@ -1,0 +1,98 @@
+"""Append-only JSONL log of every gllm call, for measuring REAL usage.
+
+Cost and latency estimates made from rate cards have been wrong here by 3x —
+a rate card cannot tell you how much a model thinks, how verbose it is, or how
+often it is slow. Only the calls you actually make can. This writes one JSON
+object per call so those questions become `jq` queries over your own history
+instead of a benchmark someone has to remember to run.
+
+**Opt-in, because it is not free.** Pricing a call loads the llm-price-tracker
+book, ~150 ms of pydantic import that plain runs deliberately avoid (see
+`pricing._load_book`). Enabling the log accepts that cost per call; leaving it
+off costs nothing at all, not even an import.
+
+    GLLM_CALL_LOG=1                     # on, at the default path below
+    GLLM_CALL_LOG=/tmp/experiment.jsonl # on, at a path you choose
+    GLLM_CALL_LOG=off                   # off (also: unset, "", 0, false, no)
+
+The default path is `$XDG_STATE_HOME/gllm/calls.jsonl`, i.e. normally
+`~/.local/state/gllm/calls.jsonl` — state, not config and not bundled data.
+It lives OUTSIDE the repo on purpose: this is per-machine history that must
+never be committed, and the surest way to guarantee that is for it to be
+somewhere `git add` cannot reach. (`.gitignore` also covers `*.jsonl` for the
+case where you point the variable at a path inside the checkout.)
+
+**Metadata only — never prompt or completion text.** The log accumulates
+silently across every call you make, and a file that quietly becomes a
+transcript of everything you have ever asked an LLM is a privacy problem, not
+a feature. Lengths are recorded instead, which answers the questions this log
+exists for (what did it cost, how long did it take, how verbose was it)
+without keeping the content.
+
+JSONL rather than one JSON array: appending to an array means rewriting the
+whole file, which races between concurrent gllm processes and truncates the
+history if one is interrupted mid-write. One object per line appends, survives
+a kill, and pipes straight into `jq -s`.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+_OFF = {"", "0", "off", "false", "no"}
+_ON = {"1", "on", "true", "yes"}
+
+
+def default_path() -> Path:
+    """`$XDG_STATE_HOME/gllm/calls.jsonl`, falling back to ~/.local/state."""
+    base = os.environ.get("XDG_STATE_HOME", "").strip()
+    root = Path(base) if base else Path.home() / ".local" / "state"
+    return root / "gllm" / "calls.jsonl"
+
+
+def log_path() -> Path | None:
+    """Where to append, or None when logging is off.
+
+    A truthy word means "the default path"; anything else is taken as a path,
+    so `GLLM_CALL_LOG=./calls.jsonl` works without a second variable.
+    """
+    raw = os.environ.get("GLLM_CALL_LOG", "").strip()
+    if raw.lower() in _OFF:
+        return None
+    if raw.lower() in _ON:
+        return default_path()
+    return Path(os.path.expandvars(raw)).expanduser()
+
+
+def enabled() -> bool:
+    """True when a call should be priced and logged. Checked before the record
+    is built, so a disabled log costs nothing beyond one env lookup."""
+    return log_path() is not None
+
+
+def append(record: dict) -> None:
+    """Append one record. Warns on failure; never raises.
+
+    A log write must not turn a successful LLM call into a failed command —
+    the answer is already on stdout by the time this runs. It still complains
+    on stderr rather than swallowing the error, because a log that silently
+    stopped recording is worse than one that never started.
+
+    Written as a single `write()` to a file opened O_APPEND, which is what
+    keeps concurrent gllm processes from interleaving each other's lines.
+    """
+    path = log_path()
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # default=str so an unexpected non-JSONable value degrades to its repr
+        # instead of losing the whole record.
+        line = json.dumps(record, separators=(",", ":"), default=str) + "\n"
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(line)
+    except OSError as exc:
+        print(f"gllm: call log write failed ({path}): {exc}", file=sys.stderr)

@@ -19,9 +19,11 @@ import json
 import mimetypes
 import os
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import calllog
 from . import pricing
 from . import reasoning as reasoning_mod
 from .adapters._capabilities import (
@@ -809,16 +811,31 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    # Stamped at DISPATCH, not after the response: vendors with time-of-day
+    # rates bill by when the request lands, and a call that starts at 03:58
+    # UTC and returns at 04:02 must not be repriced by having been slow.
+    # Outside the try so the failure path can log a timed record too — a call
+    # that errored after 30s is exactly the kind of thing the log exists for.
+    sent_at = datetime.now(UTC)
+    started = time.perf_counter()
     try:
         provider = _build_provider(provider_name)
-        # Stamped at DISPATCH, not after the response: vendors with time-of-day
-        # rates bill by when the request lands, and a call that starts at 03:58
-        # UTC and returns at 04:02 must not be repriced by having been slow.
-        sent_at = datetime.now(UTC)
         response = provider.generate(request)
     except Exception as e:
+        calllog.append(
+            {
+                "ts": sent_at.isoformat(),
+                "elapsed_s": round(time.perf_counter() - started, 3),
+                "ok": False,
+                "error": f"{type(e).__name__}: {e}",
+                "provider": provider_name,
+                "model": args.model,
+                "reasoning": args.reasoning,
+            }
+        )
         print(f"gllm: {type(e).__name__}: {e}", file=sys.stderr)
         return 1
+    elapsed_s = round(time.perf_counter() - started, 3)
 
     sys.stdout.write(response.text)
     if not response.text.endswith("\n"):
@@ -847,7 +864,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    if args.usage:
+    # Built once for two consumers. `calllog.enabled()` is checked first so a
+    # disabled log costs nothing: building this record prices the call, which
+    # loads the price book (~150ms of pydantic) that plain runs skip.
+    if args.usage or calllog.enabled():
         # Machine-readable sibling of --verbose. One JSON object on its own line,
         # prefixed so a caller can grep it out of mixed stderr. usage_raw carries
         # the provider's own numbers for exact per-model cost accounting; cost_usd
@@ -889,9 +909,22 @@ def main(argv: list[str] | None = None) -> int:
             "json": request.json_mode,
             "usage_raw": response.usage_raw,
         }
-        print(
-            "gllm-usage " + json.dumps(record, separators=(",", ":")),
-            file=sys.stderr,
+        if args.usage:
+            print(
+                "gllm-usage " + json.dumps(record, separators=(",", ":")),
+                file=sys.stderr,
+            )
+        # Lengths, never the text itself — see calllog's module docstring.
+        calllog.append(
+            {
+                "ts": sent_at.isoformat(),
+                "elapsed_s": elapsed_s,
+                "ok": True,
+                **record,
+                "prompt_chars": len(prompt or ""),
+                "response_chars": len(response.text or ""),
+                "attachments": len(attachments),
+            }
         )
 
     return 0

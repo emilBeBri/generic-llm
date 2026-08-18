@@ -6,6 +6,40 @@ reason was a wrong belief rather than a real blocker.
 
 `#todo` `#moc`
 
+# Replace the synthetic model comparison with REAL usage data
+
+The current model verdict ([[CONVENTIONS-one-shot-workload-no-cache]]) rests on
+micro-benchmarks: n=3-4 runs, a handful of hand-written problems, two prompt
+shapes I invented. It has already been wrong twice — a rate-card estimate
+understated the real cost gap 3x, and "luna is safe with reasoning off" was
+generalised from a single problem and then falsified by a second. Small
+synthetic samples keep producing confident wrong answers here.
+
+`GLLM_CALL_LOG=1` (see [[ADR-call-log-jsonl]]) now records every real call with
+cost, latency, token counts and peak/off-peak window. Run with it on for a few
+weeks of ordinary use, then answer from the log instead of from a benchmark:
+
+* **DeepSeek peak-window latency — never sampled at all.** Every measurement
+  was taken off-peak. The hypothesis that it is slower exactly when it is
+  double price is completely untested.
+* **Does `-r low` ever diverge from the medium default?** Indistinguishable on
+  three problems, with low marginally cheaper. The recommendation of medium is
+  a judgment call about harder tasks, not a measured win.
+* **Does flash-lite's arithmetic failure generalise**, or was the 0/4 specific
+  to two-phase rate problems?
+* **What do real prompts actually look like?** Every cost figure assumes the
+  200-word-explanation shape. If real usage is mostly short classification the
+  ranking could reorder entirely — output rate dominates, so verbosity per task
+  matters more than $/M.
+
+Analysis is `jq` over one JSONL file, e.g. median latency and total spend per
+model:
+
+    jq -s 'group_by(.model)[] | {model: .[0].model, n: length,
+           spend: (map(.cost_usd // 0) | add),
+           median_s: (map(.elapsed_s) | sort | .[length/2|floor])}' \
+       ~/.local/state/gllm/calls.jsonl
+
 # Verify the three adapters that no live call has ever touched
 
 `azure_openai`, `azure_anthropic` and `anthropic` are unit-tested only. This box

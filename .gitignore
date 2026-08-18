@@ -11,6 +11,12 @@ llms/
 tmp.zsh
 vim-quickfiles.txt
 
+# gllm call log (GLLM_CALL_LOG). Defaults to $XDG_STATE_HOME/gllm/calls.jsonl,
+# i.e. outside the repo entirely — this only catches the case where the
+# variable is pointed at a path inside the checkout for a quick experiment.
+# Per-machine usage history; never committed.
+*.jsonl
+
 # Python project
 .venv/
 __pycache__/
