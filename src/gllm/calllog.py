@@ -22,12 +22,24 @@ never be committed, and the surest way to guarantee that is for it to be
 somewhere `git add` cannot reach. (`.gitignore` also covers `*.jsonl` for the
 case where you point the variable at a path inside the checkout.)
 
-**Metadata only — never prompt or completion text.** The log accumulates
-silently across every call you make, and a file that quietly becomes a
-transcript of everything you have ever asked an LLM is a privacy problem, not
-a feature. Lengths are recorded instead, which answers the questions this log
-exists for (what did it cost, how long did it take, how verbose was it)
-without keeping the content.
+**Metadata by default; text is a second, separate opt-in.** The log
+accumulates silently across every call, so a file that quietly becomes a
+transcript of everything you have ever asked an LLM should be a thing you
+switched on deliberately, not a side effect of wanting cost numbers. Lengths
+alone already answer what this log exists for (cost, latency, verbosity), so
+that stays the default:
+
+    GLLM_CALL_LOG_TEXT=1     # record prompt, system and completion in full
+    GLLM_CALL_LOG_TEXT=2000  # record them, capped at 2000 chars each
+    GLLM_CALL_LOG_TEXT=off   # lengths only (the default)
+
+Note `1` means ON, not "one character" — it is a truthy word like everywhere
+else here. Pass a larger integer to mean a cap. A cap is worth setting if you
+use `-f` attachments: an inlined file turns one call into a megabyte of log.
+
+Whatever you capture lands in a plaintext file on disk. That is fine on a
+personal machine and is the point of the feature; it is worth knowing before
+enabling it on a shared one.
 
 JSONL rather than one JSON array: appending to an array means rewriting the
 whole file, which races between concurrent gllm processes and truncates the
@@ -44,6 +56,8 @@ from pathlib import Path
 
 _OFF = {"", "0", "off", "false", "no"}
 _ON = {"1", "on", "true", "yes"}
+_TEXT_ENV = "GLLM_CALL_LOG_TEXT"
+_UNCAPPED = 0
 
 
 def default_path() -> Path:
@@ -71,6 +85,53 @@ def enabled() -> bool:
     """True when a call should be priced and logged. Checked before the record
     is built, so a disabled log costs nothing beyond one env lookup."""
     return log_path() is not None
+
+
+def text_limit() -> int | None:
+    """Chars of prompt/completion to record: None when text capture is off,
+    `_UNCAPPED` (0) for the whole thing, else a positive cap.
+
+    A malformed value warns rather than defaulting to off — someone who typed
+    `GLLM_CALL_LOG_TEXT=ture` asked for text and should not silently get a log
+    without any.
+    """
+    raw = os.environ.get(_TEXT_ENV, "").strip().lower()
+    if raw in _OFF:
+        return None
+    if raw in _ON or raw == "full":
+        return _UNCAPPED
+    try:
+        return max(int(raw), 1)
+    except ValueError:
+        print(
+            f"gllm: {_TEXT_ENV}={raw!r} is neither on/off nor a number of "
+            f"characters; prompt and completion text NOT logged.",
+            file=sys.stderr,
+        )
+        return None
+
+
+def text_fields(*, prompt=None, response=None, system=None) -> dict:
+    """The text half of a record: `{}` unless text capture is on.
+
+    Each field is capped independently, and a capped one is flagged so a short
+    completion is never mistaken for a truncated record when you read the log
+    back.
+    """
+    limit = text_limit()
+    if limit is None:
+        return {}
+    out: dict = {}
+    for key, value in (("prompt", prompt), ("system", system), ("response", response)):
+        if value is None:
+            continue
+        text = str(value)
+        if limit != _UNCAPPED and len(text) > limit:
+            out[key] = text[:limit]
+            out[f"{key}_truncated"] = True
+        else:
+            out[key] = text
+    return out
 
 
 def append(record: dict) -> None:

@@ -831,6 +831,9 @@ def main(argv: list[str] | None = None) -> int:
                 "provider": provider_name,
                 "model": args.model,
                 "reasoning": args.reasoning,
+                # No response to record, but what was SENT is the interesting
+                # half of a failure.
+                **calllog.text_fields(prompt=prompt, system=request.system),
             }
         )
         print(f"gllm: {type(e).__name__}: {e}", file=sys.stderr)
@@ -914,7 +917,8 @@ def main(argv: list[str] | None = None) -> int:
                 "gllm-usage " + json.dumps(record, separators=(",", ":")),
                 file=sys.stderr,
             )
-        # Lengths, never the text itself — see calllog's module docstring.
+        # Lengths always; the text itself only under the separate
+        # GLLM_CALL_LOG_TEXT opt-in — see calllog's module docstring.
         calllog.append(
             {
                 "ts": sent_at.isoformat(),
@@ -924,6 +928,9 @@ def main(argv: list[str] | None = None) -> int:
                 "prompt_chars": len(prompt or ""),
                 "response_chars": len(response.text or ""),
                 "attachments": len(attachments),
+                **calllog.text_fields(
+                    prompt=prompt, response=response.text, system=request.system
+                ),
             }
         )
 

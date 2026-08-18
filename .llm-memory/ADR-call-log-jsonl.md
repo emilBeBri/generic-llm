@@ -36,11 +36,30 @@ which races between concurrent gllm processes and truncates the history if one
 is interrupted mid-write. One object per line appends under `O_APPEND`,
 survives a kill, and pipes into `jq -s`.
 
-**Metadata only — never prompt or completion text.** The log accumulates
-silently across every call; a file that quietly becomes a transcript of
-everything you have ever asked an LLM is a privacy problem, not a feature.
-Lengths answer the questions the log exists for (cost, latency, verbosity)
-without keeping the content.
+**Metadata by default; text behind a SECOND opt-in.** `GLLM_CALL_LOG_TEXT`
+adds `prompt`, `system` and `response` to each record. Two knobs rather than
+one because the log accumulates silently across every call: turning it into a
+transcript of everything you have ever asked an LLM should be a decision, not
+a side effect of wanting cost numbers. Lengths alone already answer cost,
+latency and verbosity, so that stays the default.
+
+Requested by the user 2026-08-19 for a personal machine where a plaintext
+transcript is not a concern and reproducing a call from the log is the point.
+The agent's privacy objection was raised once, overruled with a reason, and
+implemented in full — recorded here so it is not re-litigated next session.
+
+    GLLM_CALL_LOG_TEXT=1     # full text (1 is truthy, NOT "one character")
+    GLLM_CALL_LOG_TEXT=2000  # capped at 2000 chars per field
+    GLLM_CALL_LOG_TEXT=off   # lengths only (default)
+
+Each field caps independently and a capped one gets `<field>_truncated: true`,
+so a genuinely short completion is never misread as a cut-off record. A cap is
+worth setting alongside `-f`: one inlined attachment turns a call into a
+megabyte of log. A malformed value (`ture`) warns and logs no text rather than
+silently defaulting to off — someone who set the variable asked for text.
+
+A failed call records the prompt but has no `response` key. What was sent is
+the interesting half of a failure.
 
 ## Interface
 
