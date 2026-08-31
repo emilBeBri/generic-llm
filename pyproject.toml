@@ -1,7 +1,7 @@
 [project]
 name = "generic-llm"
 version = "0.1.0"
-description = "gllm — a minimal Unix-pipe-friendly CLI for calling LLMs (Anthropic, OpenAI, Gemini)."
+description = "gllm — a minimal Unix-pipe-friendly CLI for calling LLMs."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
