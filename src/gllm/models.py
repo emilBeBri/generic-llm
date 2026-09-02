@@ -384,6 +384,16 @@ MODELS: dict[str, ModelSpec] = {
     # ----------------------------------------------------------------- #
     # Google Gemini
     # ----------------------------------------------------------------- #
+    "gemini-3.8-flash": ModelSpec(
+        "gemini-3.8-flash", "gemini", 1_048_576, _GEMINI,
+        alt_model="gemini-3.7-flash",
+        max_output=65_536,
+    ),
+    "gemini-3.7-flash": ModelSpec(
+        "gemini-3.7-flash", "gemini", 1_048_576, _GEMINI,
+        alt_model="gemini-3.6-flash",
+        max_output=65_536,
+    ),
     "gemini-3.6-flash": ModelSpec(
         "gemini-3.6-flash", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.5-flash",
