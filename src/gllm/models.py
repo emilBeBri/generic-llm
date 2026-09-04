@@ -188,6 +188,15 @@ _GLM_THINK = ModelCaps(
     thinking_dialect="zai_thinking",
 )
 _GLM_NO_THINK = ModelCaps()
+# GLM-5.3 publishes a THIRD rung, `low`, and its default is `max`. It also
+# cannot stop reasoning — `thinking.type` takes only `enabled` — which costs
+# gllm nothing (the zai adapter never sends `disabled`; without --reasoning it
+# just omits the block and takes the provider default).
+_GLM53_EFFORT = ModelCaps(
+    native_efforts=("low", "high", "max"),
+    thinking_dialect="zai_effort",
+)
+_GLM53_VISION_EFFORT = _GLM53_EFFORT._replace(supports_vision=True)
 _GLM_VISION_EFFORT = _GLM_EFFORT._replace(supports_vision=True)
 _GLM_VISION_THINK = _GLM_THINK._replace(supports_vision=True)
 _GLM_VISION_NO_THINK = ModelCaps(supports_vision=True)
@@ -486,6 +495,17 @@ MODELS: dict[str, ModelSpec] = {
     # ----------------------------------------------------------------- #
     # Z.AI / GLM. Bare ids — nothing else in the registry contains "glm".
     # ----------------------------------------------------------------- #
+    # 5.3-flash is the first NATIVELY multimodal GLM: images ride in the same
+    # model as code and tools, so it is not in the vision-only block below.
+    # Both 5.3 rows: 1M context, 128K max output, per the model guides.
+    "glm-5.3-flash": ModelSpec(
+        "glm-5.3-flash", "zai", 1_000_000, _GLM53_VISION_EFFORT,
+        alt_model="glm-5.3", max_output=128_000,
+    ),
+    "glm-5.3": ModelSpec(
+        "glm-5.3", "zai", 1_000_000, _GLM53_EFFORT, alt_model="glm-5.2",
+        max_output=128_000,
+    ),
     "glm-5.2": ModelSpec(
         "glm-5.2", "zai", 1_000_000, _GLM_EFFORT, alt_model="glm-5.1",
         family="glm-5.2",
@@ -730,7 +750,7 @@ MODELS: dict[str, ModelSpec] = {
 # --------------------------------------------------------------------------- #
 _RESPONSES_API_PREFIXES = ("o1", "o3", "o4", "gpt-5", "codex", "grok")
 _CHAT_COMPLETIONS_PREFIXES = ("gpt-4", "gpt-3.5")
-_GLM_VISION_PREFIXES = ("glm-5v", "glm-4.6v", "glm-4.5v", "glm-ocr")
+_GLM_VISION_PREFIXES = ("glm-5.3-flash", "glm-5v", "glm-4.6v", "glm-4.5v", "glm-ocr")
 _GLM_NO_THINKING_PREFIXES = ("glm-ocr", "glm-4-32b")
 _ANTHROPIC_ADAPTIVE_MARKERS = ("4-6", "4-7", "4-8", "fable", "opus-5", "sonnet-5")
 
@@ -757,7 +777,7 @@ def _legacy_glm_thinking(model: str) -> bool:
 
 
 def _legacy_glm_effort(model: str) -> bool:
-    return (model or "").lower().startswith("glm-5.2")
+    return (model or "").lower().startswith(("glm-5.2", "glm-5.3"))
 
 
 def _legacy_anthropic_dialect(model: str) -> str:

@@ -26,15 +26,24 @@ not speak. Standalone forces Chat Completions.
   thinking-ON for the forced-thinking 4.5+ line). gllm has no "thinking off"
   path — consistent with its hands-off-by-default stance.
 - **reasoning_effort** is a recognised OpenAI SDK kwarg (top-level, NOT
-  extra_body) and is honoured **only by glm-5.2+** (`glm_supports_reasoning_effort`
-  = `startswith('glm-5.2')`). GLM-5.2 accepts our ladder verbatim
-  (low/medium/high/xhigh all valid), so `zai_effort` is identity-with-validation
-  like `openai_effort` — the API collapses low/medium→high, xhigh→max itself.
+  extra_body) and is honoured by the **glm-5.2 and glm-5.3 lines**
+  (`glm_supports_reasoning_effort`, registry-backed via `thinking_dialect ==
+  'zai_effort'`). They share the dialect, NOT the vocabulary: 5.2 is
+  `high|max` and collapses low/medium→high, xhigh→max itself; 5.3 publishes
+  `low|high|max` with `max` as the default, so `low` is a real rung there and
+  `_GLM53_EFFORT` exists to stop `resolve_effort` promoting it to `high`.
+- **The 5.3 line cannot stop reasoning.** `thinking.type` accepts only
+  `enabled`, and `disabled` is a hard request failure. That costs gllm nothing
+  today — it has no thinking-off path and omits the block without
+  `--reasoning` — but it is why bebri-chat needed an explicit gate, and why a
+  future `--no-reasoning` here would need one too.
 - **No thinking at all** on `glm-ocr` / `glm-4-32b` (`glm_supports_thinking`).
   `supports_reasoning('zai', model)` returns that, so `--reasoning` on them fails
   loudly at the CLI gate (exit 2).
 - **Vision is split into separate models** (`glm-5v*`, `glm-4.6v*`, `glm-4.5v`,
-  `glm-ocr`; `is_glm_vision_model`). Text GLMs reject image content. The CLI
+  `glm-ocr`; `is_glm_vision_model`) — with one exception, `glm-5.3-flash`,
+  the first natively multimodal GLM, which takes images in the same model as
+  code and tools. Text GLMs reject image content. The CLI
   image gate is provider-level (`supports_image('zai')` = True), so the
   per-model enforcement lives in the adapter: a non-vision model + image raises
   a loud RuntimeError naming the vision models. Images go as `image_url` base64
@@ -73,7 +82,9 @@ The GLM capability splits used to be prefix tuples in `_capabilities.py`
 
 | caps preset | rows | thinking |
 |---|---|---|
-| `_GLM_EFFORT` | glm-5.2 | `thinking` + `reasoning_effort` |
+| `_GLM53_EFFORT` | glm-5.3 | `thinking` + `reasoning_effort` (low/high/max) |
+| `_GLM53_VISION_EFFORT` | glm-5.3-flash | same, + images |
+| `_GLM_EFFORT` | glm-5.2 | `thinking` + `reasoning_effort` (high/max) |
 | `_GLM_THINK` | glm-5.1 … glm-4.5* | `thinking` only |
 | `_GLM_NO_THINK` | glm-4-32b-0414-128k | none |
 | `_GLM_VISION_THINK` | glm-5v-turbo, glm-4.6v*, glm-4.5v | `thinking`, + images |

@@ -8,6 +8,8 @@ from gllm.adapters._capabilities import (
     use_responses_api,
 )
 from gllm.domain import Attachment
+from gllm.models import MODELS
+from gllm.reasoning import resolve_effort
 
 
 def test_responses_api_models():
@@ -49,18 +51,36 @@ def test_image_capability_on_compat_hosts():
 
 
 def test_glm_vision_split():
-    # Vision models take images; text GLMs do not.
-    for m in ["glm-5v-turbo", "glm-4.6v", "glm-4.6v-flash", "glm-4.5v", "glm-ocr"]:
+    # Vision models take images; text GLMs do not. glm-5.3-flash is the first
+    # NATIVELY multimodal GLM — vision in the flagship line, not a separate
+    # model — so it sits on the vision side while its 5.3 sibling does not.
+    for m in [
+        "glm-5.3-flash", "glm-5v-turbo", "glm-4.6v", "glm-4.6v-flash",
+        "glm-4.5v", "glm-ocr",
+    ]:
         assert is_glm_vision_model(m), m
-    for m in ["glm-5.2", "glm-4.6", "glm-4.7-flash", "glm-4-32b-0414-128k"]:
+    for m in ["glm-5.3", "glm-5.2", "glm-4.6", "glm-4.7-flash", "glm-4-32b-0414-128k"]:
         assert not is_glm_vision_model(m), m
 
 
-def test_glm_reasoning_effort_gated_to_5_2():
-    assert glm_supports_reasoning_effort("glm-5.2")
-    # Thinking on/off works on 4.5+, but reasoning_effort is 5.2-only.
+def test_glm_reasoning_effort_gated_to_the_5_2_and_5_3_lines():
+    for m in ["glm-5.2", "glm-5.3", "glm-5.3-flash"]:
+        assert glm_supports_reasoning_effort(m), m
+    # Thinking on/off works on 4.5+, but reasoning_effort is 5.2+-only.
     for m in ["glm-5.1", "glm-5", "glm-4.7", "glm-4.6", "glm-4.6v"]:
         assert not glm_supports_reasoning_effort(m), m
+
+
+def test_glm_5_3_publishes_a_low_rung_that_5_2_does_not_have():
+    """Both families speak `zai_effort`, but not the same words: 5.2 is
+    high|max, 5.3 is low|high|max with `max` as its default. Sharing one caps
+    preset would promote a `low` request to Enhanced Reasoning and bill it."""
+    assert MODELS["glm-5.2"].caps.native_efforts == ("high", "max")
+    for m in ("glm-5.3", "glm-5.3-flash"):
+        assert MODELS[m].caps.native_efforts == ("low", "high", "max"), m
+        assert resolve_effort("low", MODELS[m].caps.native_efforts) == "low", m
+        assert resolve_effort("xhigh", MODELS[m].caps.native_efforts) == "max", m
+    assert resolve_effort("low", MODELS["glm-5.2"].caps.native_efforts) == "high"
 
 
 def test_pdf_capability_matrix():
