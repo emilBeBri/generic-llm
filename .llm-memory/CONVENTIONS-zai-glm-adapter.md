@@ -82,13 +82,13 @@ The GLM capability splits used to be prefix tuples in `_capabilities.py`
 
 | caps preset | rows | thinking |
 |---|---|---|
-| `_GLM53_EFFORT` | glm-5.3 | `thinking` + `reasoning_effort` (low/high/max) |
-| `_GLM53_VISION_EFFORT` | glm-5.3-flash | same, + images |
+| `_GLM53_VISION_EFFORT` | glm-5.3-flash | `thinking` + `reasoning_effort` (low/high/max), + images |
+| `_GLM53_EFFORT` | glm-5.3 | same, text only |
 | `_GLM_EFFORT` | glm-5.2 | `thinking` + `reasoning_effort` (high/max) |
-| `_GLM_THINK` | glm-5.1 … glm-4.5* | `thinking` only |
-| `_GLM_NO_THINK` | glm-4-32b-0414-128k | none |
-| `_GLM_VISION_THINK` | glm-5v-turbo, glm-4.6v*, glm-4.5v | `thinking`, + images |
-| `_GLM_VISION_NO_THINK` | glm-ocr | none, + images |
+
+(The binary-thinking and vision-only presets — `_GLM_THINK`, `_GLM_NO_THINK`,
+`_GLM_VISION_THINK`, `_GLM_VISION_NO_THINK` — were deleted with the rows that
+used them on 2026-09-04; see below.)
 
 The consequence worth knowing: **`supports_image` now takes a model**, so the
 vision split is refused by the CLI's native-or-fail gate before dispatch rather
@@ -99,6 +99,27 @@ registry row first and fall back to the old prefixes for an unregistered
 
 Z.AI's GLM models are also served third-party: `regolo:glm5.2-beta` is the same
 family via [[ADR-provider-model-axis]]'s `openai_compat` adapter, `family='glm-5.2'`.
+
+## 2026-09-04: the registry keeps four GLM rows, not twenty-one
+
+Everything below GLM-5.2 was removed — the 4.x line, `glm-5`/`glm-5.1`/
+`glm-5-turbo`, the free flash rows and the five vision-only models. Not
+deprecations: Z.AI still serves all of them. They went because `--models`
+listing 21 GLM ids for three anyone would pick is exactly the noise a curated
+registry exists to prevent, and `glm-5.3-flash` at $0.075/$0.25 beats every
+paid 4.x row while also reading images.
+
+Two things deliberately did NOT change:
+
+- **The `_legacy_*` prefix tuples stay.** A hand-typed `glm-4.6v` still routes
+  to zai and still gets the right wire shape — it just has no registry row, so
+  no context window, no `max_output`, and price via the book or nothing. That
+  is the whole point of `_legacy_caps` being a fallback rather than a fixture,
+  and `test_glm_vision_split_still_guessed_for_unregistered_ids` pins it.
+- **The prices stay in the llm-price-tracker book.** The book prices a call
+  made in July; deleting rows there would break that, and the next refresh
+  would restore them anyway. `data/prices.json` now carries one GLM row, the
+  regolo rental — the free-tier rows went with their models.
 
 ## 2026-08-07: two endpoints, one key — and the error names the wrong cause
 

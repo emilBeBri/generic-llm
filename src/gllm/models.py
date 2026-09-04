@@ -177,17 +177,15 @@ _DEEPSEEK = ModelCaps(
 )
 
 # --- Z.AI / GLM. Capabilities are split across model FAMILIES rather than
-# gated per call: vision is a separate model line, and `reasoning_effort` is
-# honoured only from glm-5.2 on (below that, thinking is a binary on/off).
+# gated per call, and the split survived the 2026-09-04 purge even though only
+# two presets are left with rows: `reasoning_effort` is honoured from glm-5.2
+# on, and the 5.3 line reads images in the same model it runs tools in.
+# The binary-thinking and vision-only presets went with the rows that used
+# them; `_legacy_caps` still guesses those shapes for an unregistered id.
 _GLM_EFFORT = ModelCaps(
     native_efforts=("high", "max"),
     thinking_dialect="zai_effort",
 )
-_GLM_THINK = ModelCaps(
-    native_efforts=("high",),
-    thinking_dialect="zai_thinking",
-)
-_GLM_NO_THINK = ModelCaps()
 # GLM-5.3 publishes a THIRD rung, `low`, and its default is `max`. It also
 # cannot stop reasoning — `thinking.type` takes only `enabled` — which costs
 # gllm nothing (the zai adapter never sends `disabled`; without --reasoning it
@@ -197,9 +195,6 @@ _GLM53_EFFORT = ModelCaps(
     thinking_dialect="zai_effort",
 )
 _GLM53_VISION_EFFORT = _GLM53_EFFORT._replace(supports_vision=True)
-_GLM_VISION_EFFORT = _GLM_EFFORT._replace(supports_vision=True)
-_GLM_VISION_THINK = _GLM_THINK._replace(supports_vision=True)
-_GLM_VISION_NO_THINK = ModelCaps(supports_vision=True)
 
 # --- Moonshot Kimi. Every current model accepts images. Reasoning control is
 # per-family: K3 has low|high|max, K2.6 is binary, K2.7 Code has no knob.
@@ -494,10 +489,20 @@ MODELS: dict[str, ModelSpec] = {
     ),
     # ----------------------------------------------------------------- #
     # Z.AI / GLM. Bare ids — nothing else in the registry contains "glm".
+    #
+    # Everything below GLM-5.2 was REMOVED on 2026-09-04: the whole 4.x line,
+    # glm-5/5.1, the free flash tiers and the separate vision models —
+    # eighteen rows, none deprecated upstream, all superseded on price AND
+    # capability by glm-5.3-flash. `--models` listing twenty-one GLM ids for
+    # three anyone would pick is the noise this registry exists to avoid.
+    # Their prices stay in the llm-price-tracker book, which is what prices a
+    # call made in July; the substring fallbacks in `_legacy_*` still answer
+    # for an unregistered `glm-*` id typed by hand.
     # ----------------------------------------------------------------- #
     # 5.3-flash is the first NATIVELY multimodal GLM: images ride in the same
-    # model as code and tools, so it is not in the vision-only block below.
-    # Both 5.3 rows: 1M context, 128K max output, per the model guides.
+    # model as code and tools, so it replaces both the old flash tier and the
+    # vision-only line. Both 5.3 rows: 1M context, 128K max output, per the
+    # model guides.
     "glm-5.3-flash": ModelSpec(
         "glm-5.3-flash", "zai", 1_000_000, _GLM53_VISION_EFFORT,
         alt_model="glm-5.3", max_output=128_000,
@@ -506,68 +511,10 @@ MODELS: dict[str, ModelSpec] = {
         "glm-5.3", "zai", 1_000_000, _GLM53_EFFORT, alt_model="glm-5.2",
         max_output=128_000,
     ),
+    # Kept as the one pre-5.3 row: `regolo:glm5.2-beta` mirrors it by family.
     "glm-5.2": ModelSpec(
-        "glm-5.2", "zai", 1_000_000, _GLM_EFFORT, alt_model="glm-5.1",
+        "glm-5.2", "zai", 1_000_000, _GLM_EFFORT, alt_model="glm-5.3",
         family="glm-5.2",
-    ),
-    "glm-5.1": ModelSpec("glm-5.1", "zai", 200_000, _GLM_THINK, alt_model="glm-5"),
-    "glm-5": ModelSpec("glm-5", "zai", 200_000, _GLM_THINK, alt_model="glm-4.7"),
-    "glm-5-turbo": ModelSpec(
-        "glm-5-turbo", "zai", 200_000, _GLM_THINK, alt_model="glm-4.7"
-    ),
-    "glm-4.7": ModelSpec(
-        "glm-4.7", "zai", 200_000, _GLM_THINK, alt_model="glm-4.7-flash"
-    ),
-    "glm-4.7-flashx": ModelSpec(
-        "glm-4.7-flashx", "zai", 200_000, _GLM_THINK, alt_model="glm-4.7-flash"
-    ),
-    "glm-4.7-flash": ModelSpec(
-        "glm-4.7-flash", "zai", 200_000, _GLM_THINK, alt_model="glm-4.7-flashx"
-    ),
-    "glm-4.6": ModelSpec("glm-4.6", "zai", 200_000, _GLM_THINK, alt_model="glm-4.5"),
-    "glm-4.5": ModelSpec(
-        "glm-4.5", "zai", 128_000, _GLM_THINK, alt_model="glm-4.5-air"
-    ),
-    "glm-4.5-x": ModelSpec("glm-4.5-x", "zai", 128_000, _GLM_THINK, alt_model="glm-4.5"),
-    "glm-4.5-air": ModelSpec(
-        "glm-4.5-air", "zai", 128_000, _GLM_THINK, alt_model="glm-4.5-flash"
-    ),
-    "glm-4.5-airx": ModelSpec(
-        "glm-4.5-airx", "zai", 128_000, _GLM_THINK, alt_model="glm-4.5-air"
-    ),
-    # Both numbers MEASURED against the live API 2026-08-13, not documented.
-    # Context: 128_000 was provably wrong — a 65,017-token input plus
-    # max_tokens=66,000 (sum 131,017) succeeded, and 131,117 failed, bracketing
-    # the true window at 131,072. Output: the 400 for an over-large max_tokens
-    # names its own range — `1210 The max_tokens parameter is illegal.
-    # 限制数值范围[1,98304]`. The other zai rows still carry the unverified
-    # 128_000 and are therefore suspect too; nobody has probed them.
-    "glm-4.5-flash": ModelSpec(
-        "glm-4.5-flash", "zai", 131_072, _GLM_THINK, alt_model="glm-4.5-air",
-        max_output=98_304,
-    ),
-    # Pre-4.5: no `thinking` block at all.
-    "glm-4-32b-0414-128k": ModelSpec(
-        "glm-4-32b-0414-128k", "zai", 128_000, _GLM_NO_THINK, alt_model="glm-4.5-flash"
-    ),
-    # Vision lives in SEPARATE models; the text GLMs reject image content.
-    "glm-5v-turbo": ModelSpec(
-        "glm-5v-turbo", "zai", 200_000, _GLM_VISION_THINK, alt_model="glm-4.6v"
-    ),
-    "glm-4.6v": ModelSpec(
-        "glm-4.6v", "zai", 128_000, _GLM_VISION_THINK, alt_model="glm-4.6v-flashx"
-    ),
-    "glm-4.6v-flashx": ModelSpec(
-        "glm-4.6v-flashx", "zai", 128_000, _GLM_VISION_THINK, alt_model="glm-4.6v-flash"
-    ),
-    "glm-4.6v-flash": ModelSpec(
-        "glm-4.6v-flash", "zai", 128_000, _GLM_VISION_THINK, alt_model="glm-4.6v-flashx"
-    ),
-    "glm-4.5v": ModelSpec(
-        "glm-4.5v", "zai", 64_000, _GLM_VISION_THINK, alt_model="glm-4.6v"
-    ),
-    "glm-ocr": ModelSpec(
-        "glm-ocr", "zai", 8_192, _GLM_VISION_NO_THINK, alt_model="glm-4.6v"
     ),
     # ----------------------------------------------------------------- #
     # Moonshot Kimi. Bare ids are first-party; the groq:moonshotai row below

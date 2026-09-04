@@ -50,23 +50,32 @@ def test_image_capability_on_compat_hosts():
     assert not supports_image("regolo", "regolo:qwen3.5-122b")
 
 
-def test_glm_vision_split():
-    # Vision models take images; text GLMs do not. glm-5.3-flash is the first
-    # NATIVELY multimodal GLM — vision in the flagship line, not a separate
-    # model — so it sits on the vision side while its 5.3 sibling does not.
-    for m in [
-        "glm-5.3-flash", "glm-5v-turbo", "glm-4.6v", "glm-4.6v-flash",
-        "glm-4.5v", "glm-ocr",
-    ]:
+def test_glm_vision_split_for_registered_rows():
+    # glm-5.3-flash is the first NATIVELY multimodal GLM — vision in the
+    # flagship line rather than a separate model — so it sits on the vision
+    # side while its 5.3 sibling does not.
+    assert is_glm_vision_model("glm-5.3-flash")
+    for m in ["glm-5.3", "glm-5.2"]:
+        assert not is_glm_vision_model(m), m
+
+
+def test_glm_vision_split_still_guessed_for_unregistered_ids():
+    """The 2026-09-04 purge took the sub-5.2 rows out of MODELS, not out of
+    Z.AI. Typing one by hand still has to route and still has to know whether
+    it eats images, which is what the `_legacy_*` prefix tuples are for."""
+    for m in ["glm-5v-turbo", "glm-4.6v", "glm-4.6v-flash", "glm-4.5v", "glm-ocr"]:
+        assert m not in MODELS, m
         assert is_glm_vision_model(m), m
-    for m in ["glm-5.3", "glm-5.2", "glm-4.6", "glm-4.7-flash", "glm-4-32b-0414-128k"]:
+    for m in ["glm-4.6", "glm-4.7-flash", "glm-4-32b-0414-128k"]:
+        assert m not in MODELS, m
         assert not is_glm_vision_model(m), m
 
 
 def test_glm_reasoning_effort_gated_to_the_5_2_and_5_3_lines():
     for m in ["glm-5.2", "glm-5.3", "glm-5.3-flash"]:
         assert glm_supports_reasoning_effort(m), m
-    # Thinking on/off works on 4.5+, but reasoning_effort is 5.2+-only.
+    # Unregistered since the purge, but a hand-typed one must still not be
+    # sent a field it does not understand: below 5.2 thinking is binary.
     for m in ["glm-5.1", "glm-5", "glm-4.7", "glm-4.6", "glm-4.6v"]:
         assert not glm_supports_reasoning_effort(m), m
 

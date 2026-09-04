@@ -62,21 +62,6 @@
     "input": 0.5,
     "output": 3.0
   },
-  "glm-4.5-flash": {
-    "input": 0.0,
-    "output": 0.0,
-    "note": "Free tier."
-  },
-  "glm-4.6v-flash": {
-    "input": 0.0,
-    "output": 0.0,
-    "note": "Free tier."
-  },
-  "glm-4.7-flash": {
-    "input": 0.0,
-    "output": 0.0,
-    "note": "Free tier."
-  },
   "gpt-4.1-nano-dev": {
     "input": 15.0,
     "output": 60.0,
@@ -276,10 +261,5 @@
     "input": 1.1,
     "output": 4.62,
     "note": "EUR 1.00/4.20, converted at ~1.10 USD/EUR."
-  },
-  "glm-5v-turbo": {
-    "input": 1.2,
-    "output": 4.0,
-    "input_cached": 0.24
   }
 }
