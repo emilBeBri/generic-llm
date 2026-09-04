@@ -67,35 +67,15 @@
     "output": 0.0,
     "note": "Free tier."
   },
-  "glm-4.5v": {
-    "input": 0.6,
-    "output": 1.8,
-    "input_cached": 0.11
-  },
-  "glm-4.6v": {
-    "input": 0.3,
-    "output": 0.9,
-    "input_cached": 0.05
-  },
   "glm-4.6v-flash": {
     "input": 0.0,
     "output": 0.0,
     "note": "Free tier."
   },
-  "glm-4.6v-flashx": {
-    "input": 0.04,
-    "output": 0.4,
-    "input_cached": 0.004
-  },
   "glm-4.7-flash": {
     "input": 0.0,
     "output": 0.0,
     "note": "Free tier."
-  },
-  "glm-ocr": {
-    "input": 0.03,
-    "output": 0.03,
-    "note": "OCR model; no prompt caching."
   },
   "gpt-4.1-nano-dev": {
     "input": 15.0,
