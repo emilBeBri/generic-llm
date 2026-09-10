@@ -34,7 +34,15 @@ Capability matrix lives in `adapters/_capabilities.py` (`supports_image`, `suppo
 | `gemini` | `types.Part.from_bytes` | `types.Part.from_bytes` | fail |
 | `grok` | inherits OpenAI image path | fail | fail |
 | GLM / Kimi vision models | `image_url` | fail | fail |
-| Groq / Regolo / DeepSeek | fail | fail | fail |
+| `deepseek` vision models | `image_url` data URI | fail | fail |
+| Groq / Regolo | fail | fail | fail |
+
+DeepSeek joined the image row on 2026-09-10: V4.1-Flash reads images natively
+(JPEG/PNG/GIF/WebP, sniffed from content, base64 `data:` URL in an OpenAI-shaped
+`image_url` part), which retired the separate `deepseek-v4-flash-vision-exp`
+model. It is a per-MODEL fact, like GLM's: `deepseek-v4-pro` has no image input,
+so `supports_image` is answered from the registry row, not from the provider
+name. PDFs still fail on every DeepSeek model.
 
 Public OpenAI's accepted non-PDF set is the documented Office, presentation,
 spreadsheet, text, and source-code table. Responses uses `input_file`; Chat

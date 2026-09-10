@@ -41,7 +41,10 @@ from .ports import LLMProvider
 from .providers import DISCOVERABLE_PROVIDERS, PROVIDERS
 from .routing import WORK_PROVIDER_REDIRECTS, effective_model, provider_for
 
-DEFAULT_MODEL = "deepseek-v4-flash"
+# The same model either way -- `deepseek-v4-flash` is a retired alias that
+# DeepSeek serves with V4.1-Flash -- but the canonical id is the one that
+# will still be listed next year. See GOTCHA-deepseek-v41-id-changes.
+DEFAULT_MODEL = "deepseek-flash"
 # Config and keys load from this repo's own .env (repo root, beside
 # pyproject.toml), resolved relative to this file so it is found regardless of
 # cwd. cli.py lives at <root>/src/gllm/cli.py, so parents[2] is the repo root.

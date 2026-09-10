@@ -31,7 +31,12 @@ def test_image_capability_matrix():
     assert supports_image("grok", "grok-4.3")
     assert supports_image("kimi", "kimi-k3")
     assert supports_image("kimi", "kimi-k2.6")
-    assert not supports_image("deepseek", "deepseek-v4-flash")
+    # V4.1-Flash reads images natively; V4-Pro still does not. The retired
+    # `deepseek-v4-flash` id now resolves to V4.1-Flash, so it inherits vision
+    # that the model it is named after never had.
+    assert supports_image("deepseek", "deepseek-flash")
+    assert supports_image("deepseek", "deepseek-v4-flash")
+    assert not supports_image("deepseek", "deepseek-v4-pro")
 
 
 def test_image_capability_is_per_model_on_glm():

@@ -149,13 +149,47 @@ def test_list_models_filters_to_text_generation(provider, monkeypatch):
     assert provider.list_models() == ["deepseek-v4-flash", "deepseek-v4-pro"]
 
 
-def test_attachments_are_refused(provider, posted):
-    with pytest.raises(RuntimeError, match="does not accept file attachments"):
+def test_images_are_refused_on_a_non_vision_model(provider, posted):
+    # Per MODEL, not per provider: V4-Pro has no image input, and gllm refuses
+    # locally rather than letting the API answer with a 400.
+    with pytest.raises(RuntimeError, match="does not accept images"):
         provider.generate(
             Request(
                 prompt="hej",
                 model="deepseek-v4-pro",
                 attachments=(Attachment(b"x", "image/png", "a.png"),),
+            )
+        )
+
+
+def test_images_ride_as_openai_image_url_parts(provider, posted):
+    provider.generate(
+        Request(
+            prompt="hej",
+            model="deepseek-flash",
+            attachments=(Attachment(b"x", "image/png", "a.png"),),
+        )
+    )
+    _, _, body = posted[-1]
+    assert body["messages"][-1]["content"] == [
+        {"type": "text", "text": "hej"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,eA=="}},
+    ]
+
+
+def test_a_text_turn_still_sends_a_plain_string(provider, posted):
+    provider.generate(Request(prompt="hej", model="deepseek-flash"))
+    _, _, body = posted[-1]
+    assert body["messages"][-1]["content"] == "hej"
+
+
+def test_pdfs_are_refused_on_every_deepseek_model(provider, posted):
+    with pytest.raises(RuntimeError, match="no native PDF input"):
+        provider.generate(
+            Request(
+                prompt="hej",
+                model="deepseek-flash",
+                attachments=(Attachment(b"%PDF", "application/pdf", "a.pdf"),),
             )
         )
 

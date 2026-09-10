@@ -166,15 +166,22 @@ _GROK_MULTI_AGENT = _GROK._replace(
 # Reasons, but rejects `reasoning_effort` outright.
 _GROK_NO_EFFORT = _GROK._replace(native_efforts=(), thinking_dialect=None)
 
-# --- DeepSeek V4. Has BOTH a thinking toggle
+# --- DeepSeek. Has BOTH a thinking toggle
 # (`extra_body={"thinking": {"type": "enabled"|"disabled"}}`, default enabled)
-# and an effort control (`reasoning_effort`), which publishes only high|max and
-# collapses low/medium->high, xhigh->max server-side. Verified live 2026-07-29.
-# Still json_object only, so no schema enforcement, and no image/document input.
+# and an effort control (`reasoning_effort`). The published vocabulary gained a
+# `low` rung with V4.1 on 2026-09-10 — it is now low|high|max, and the docs'
+# mapping table collapses minimal->low, medium/xhigh->high, ultra->max
+# server-side. `low` verified live 2026-09-10 (34 reasoning tokens, not
+# silently upgraded); before V4.1 gllm's `-r low` could only resolve to `high`.
+# Still json_object only, so no schema enforcement.
 _DEEPSEEK = ModelCaps(
-    native_efforts=("high", "max"),
+    native_efforts=("low", "high", "max"),
     thinking_dialect="deepseek_effort",
 )
+# V4.1-Flash reads images natively (OpenAI-shaped `image_url` parts, JPEG/PNG/
+# GIF/WebP, sniffed from content not filename). This retired the separate
+# `deepseek-v4-flash-vision-exp` model. V4-Pro still has no image input.
+_DEEPSEEK_VISION = _DEEPSEEK._replace(supports_vision=True)
 
 # --- Z.AI / GLM. Capabilities are split across model FAMILIES rather than
 # gated per call, and the split survived the 2026-09-04 purge even though only
@@ -447,13 +454,29 @@ MODELS: dict[str, ModelSpec] = {
     # ----------------------------------------------------------------- #
     # DeepSeek (first-party). Also served third-party — see the host rows.
     # ----------------------------------------------------------------- #
+    # The current flagship, released 2026-09-10. Note the versionless id:
+    # DeepSeek-V4.1-Flash ships as `deepseek-flash`, NOT `deepseek-v4.1-flash`.
+    "deepseek-flash": ModelSpec(
+        "deepseek-flash", "deepseek", 1_000_000, _DEEPSEEK_VISION,
+        alt_model="deepseek-v4-pro", family="deepseek-v4.1-flash",
+    ),
+    # Legacy id, kept because it still RESOLVES: V4-Flash was retired on
+    # 2026-09-10 and DeepSeek serves this name with V4.1-Flash, billed at the
+    # Flash rate. Same family as the row above because it is the same model —
+    # so it inherits vision, which the real V4-Flash never had.
+    # `deepseek-v4-flash-vision-exp` was retired the same way and is left
+    # unregistered: it resolves too, but a row for every dead alias is how a
+    # registry starts lying (see ADR-model-listing-live-probe).
+    "deepseek-v4-flash": ModelSpec(
+        "deepseek-v4-flash", "deepseek", 1_000_000, _DEEPSEEK_VISION,
+        alt_model="deepseek-flash", family="deepseek-v4.1-flash",
+    ),
+    # Being retired: from 04:00 UTC 2026-09-14 every request to this id is
+    # routed to V4.1-Flash and billed at Flash rates, until V4.1-Pro ships.
+    # The row stays accurate until then — no vision, its own price.
     "deepseek-v4-pro": ModelSpec(
         "deepseek-v4-pro", "deepseek", 1_000_000, _DEEPSEEK,
-        alt_model="deepseek-v4-flash", family="deepseek-v4",
-    ),
-    "deepseek-v4-flash": ModelSpec(
-        "deepseek-v4-flash", "deepseek", 1_000_000, _DEEPSEEK,
-        alt_model="deepseek-v4-pro", family="deepseek-v4",
+        alt_model="deepseek-flash", family="deepseek-v4",
     ),
     # ----------------------------------------------------------------- #
     # xAI Grok. grok-4.3 is the general flagship, grok-4.5 the coding one;

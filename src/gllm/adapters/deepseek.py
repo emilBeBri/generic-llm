@@ -2,7 +2,9 @@
 
 DeepSeek's API is OpenAI-compatible (chat completions) at api.deepseek.com,
 so we POST the chat-completions body straight there via `gllm._http`. Models:
-`deepseek-v4-pro`, `deepseek-v4-flash`.
+`deepseek-flash` (V4.1-Flash, the current flagship — note the versionless id)
+and `deepseek-v4-pro`. `deepseek-v4-flash` still resolves but is a retired
+alias served by V4.1-Flash.
 
 Thinking: the v4 models reason by default and emit a `reasoning_content`
 field alongside `content`. gllm is one-shot and prints only the final text,
@@ -13,8 +15,17 @@ surface" and refused `-r` outright — wrong since V4, and verified wrong live o
 2026-07-29 (effort=high gave ~72 chars of reasoning_content, max ~200, and
 thinking:disabled 0). V4 exposes a toggle
 (`extra_body={"thinking": {"type": "enabled"}}`, default enabled) and an effort
-control publishing `high|max`; the CLI resolves gllm's rung onto those two
-before it reaches us, so `-r xhigh` arrives as `max`.
+control publishing `low|high|max` since V4.1 (2026-09-10; it was `high|max`
+before, so `-r low` used to resolve up to `high` and now genuinely gets `low`).
+The CLI resolves gllm's rung onto that vocabulary before it reaches us, so
+`-r xhigh` arrives as `max`.
+
+Images: V4.1-Flash reads them natively as OpenAI-shaped `image_url` parts with
+a base64 `data:` URL — JPEG, PNG, GIF, WebP, sniffed from content rather than
+filename or declared MIME. This is gated on the model's registry caps, not on
+the provider: `deepseek-v4-pro` has no image input, and sending it one is a
+refusal here rather than a 400 from the API. PDFs are refused on every DeepSeek
+model — there is no native document input.
 
 Structured output: DeepSeek has no native json_schema/strict mode — only
 `response_format={"type": "json_object"}`. `--json` flips that on (best-effort
@@ -25,16 +36,25 @@ fake strict enforcement with a prompt instruction. The CLI gates this earlier
 
 from __future__ import annotations
 
+import base64
 import os
 
 from .._http import get_json, post_json, wrap
 from ..config import resolve_base_url
-from ..domain import Request, Response
+from ..domain import Attachment, Request, Response
 from ..ports import LLMProvider
 from ..usage import from_deepseek
-from ._capabilities import is_text_generation_model
+from ._capabilities import is_text_generation_model, supports_image
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+
+
+def _image_part(a: Attachment) -> dict:
+    b64 = base64.b64encode(a.data).decode()
+    return {
+        "type": "image_url",
+        "image_url": {"url": f"data:{a.mime_type};base64,{b64}"},
+    }
 
 
 def _finish_reason(resp) -> str | None:
@@ -66,12 +86,6 @@ class DeepSeekProvider(LLMProvider):
         )
 
     def generate(self, request: Request) -> Response:
-        if request.attachments:
-            raise RuntimeError(
-                "deepseek does not accept file attachments (no native image "
-                "or document API). Try a vision-capable model like "
-                "claude-opus-4-8, gpt-5, or gemini-3.1-pro-preview."
-            )
         if request.schema is not None:
             raise RuntimeError(
                 "deepseek has no native JSON-schema enforcement (only "
@@ -83,7 +97,7 @@ class DeepSeekProvider(LLMProvider):
         messages = []
         if request.system:
             messages.append({"role": "system", "content": request.system})
-        messages.append({"role": "user", "content": request.prompt})
+        messages.append({"role": "user", "content": self._user_content(request)})
 
         reasoning_on = request.reasoning is not None
 
@@ -108,7 +122,7 @@ class DeepSeekProvider(LLMProvider):
             # needed `extra_body` to survive the client's kwarg validation, but
             # extra_body was never a wire concept — it merged into this same
             # object. The effort value is already resolved to DeepSeek's own
-            # vocabulary (high|max) by the CLI — see reasoning.resolve_effort.
+            # vocabulary (low|high|max) by the CLI — see reasoning.resolve_effort.
             kwargs["thinking"] = {"type": "enabled"}
             kwargs["reasoning_effort"] = request.wire_effort
 
@@ -126,3 +140,30 @@ class DeepSeekProvider(LLMProvider):
             raw=resp,
             **from_deepseek(getattr(resp, "usage", None)),
         )
+
+    def _user_content(self, request: Request):
+        """Plain string for a text turn; an OpenAI-shaped `[text, image_url...]`
+        array once images are attached. The vision check is per MODEL, not per
+        provider — V4.1-Flash reads images and V4-Pro does not."""
+        for a in request.attachments:
+            if a.mime_type == "application/pdf":
+                raise RuntimeError(
+                    "deepseek has no native PDF input. Use claude-opus-4-8 or "
+                    "gemini-3.1-pro-preview for documents."
+                )
+            if not a.mime_type.startswith("image/"):
+                raise RuntimeError(
+                    f"deepseek cannot encode attachment {a.source_label!r} "
+                    f"(mime {a.mime_type})."
+                )
+
+        if not request.attachments:
+            return request.prompt
+        if not supports_image(self.name, request.model):
+            raise RuntimeError(
+                f"deepseek model {request.model!r} does not accept images. Use "
+                f"deepseek-flash, which reads them natively."
+            )
+        parts: list[dict] = [{"type": "text", "text": request.prompt}]
+        parts.extend(_image_part(a) for a in request.attachments)
+        return parts

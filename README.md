@@ -143,7 +143,7 @@ The families below are illustrative orientation, **not** an authoritative list �
 | Anthropic | `claude-opus-4-5/6/7/8`, `claude-sonnet-4-5/6`, `claude-haiku-4-5/6` |
 | OpenAI | `gpt-5{,-mini,-nano,-pro}`, `gpt-5.1`–`gpt-5.5`, `gpt-5-codex`, `gpt-4.1{,-mini,-nano}`, `gpt-4o{,-mini}`, `o1/o3/o4-mini` |
 | Gemini | `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-3.1-pro-preview` |
-| DeepSeek | `deepseek-v4-pro`, `deepseek-v4-flash` |
+| DeepSeek | `deepseek-flash` (V4.1, vision), `deepseek-v4-pro` |
 | xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309` |
 | Z.AI / GLM | text: `glm-5.2` (reasoning_effort), `glm-5.1/5/4.7/4.6/4.5`; vision: `glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr` |
 | Moonshot Kimi | `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, `kimi-k2.6` |
@@ -172,7 +172,7 @@ set. If neither is set, reasoning is **hands-off** — no reasoning param is sen
 so the provider's own default applies (no behaviour change).
 
 **Four rungs, always — that is the point.** Providers share almost no
-vocabulary (DeepSeek publishes `{high, max}`, gpt-5.6 `{none..max}`, Gemini
+vocabulary (DeepSeek publishes `{low, high, max}`, gpt-5.6 `{none..max}`, Gemini
 `{minimal..high}`), so gllm normalises rather than exposing each one's dialect.
 A script written against `-r high` keeps working when you change the model.
 
@@ -186,7 +186,7 @@ When a rung is remapped, gllm says so on stderr (silent on a pass-through,
 suppressed with `-q`):
 
 ```
-gllm: -r xhigh -> 'max' (deepseek-v4-pro offers: high, max)
+gllm: -r xhigh -> 'max' (deepseek-v4-pro offers: low, high, max)
 ```
 
 On a model with **no** effort knob at all (gpt-4o, grok-build-0.1), an
@@ -211,7 +211,7 @@ gllm -r low   -m gemini-3.5-flash "quick sanity check"
 | Gemini | `thinking_budget` | 4k / 8k / 16k / dynamic (`-1`) |
 | Z.AI GLM-5.2 | `thinking.enabled` + `reasoning_effort` | the level, verbatim (`low`/`medium`→high, `xhigh`→max internally) |
 | Z.AI GLM 4.5–5.1 | `thinking.enabled` (binary) | thinking on; effort ignored |
-| DeepSeek | `thinking.enabled` + `reasoning_effort` | only {high, max}; xhigh → max |
+| DeepSeek | `thinking.enabled` + `reasoning_effort` | {low, high, max}; xhigh → max |
 | Kimi K3 | `reasoning_effort` | low / low / high / max |
 | Kimi K2.6 | binary `thinking.enabled` | thinking on; effort ignored |
 | Kimi K2.7 Code | none | always reasons, no knob → exit 2 |
@@ -343,7 +343,8 @@ text-extraction fallback. Pick a model that fits the data.
 | xAI Grok | yes (`input_image`) | no | no |
 | Z.AI / GLM | vision models only (`glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr`; `image_url`) | no | no |
 | Moonshot Kimi | yes (`image_url`) | no | no |
-| Groq / Regolo / DeepSeek | no | no | no |
+| `deepseek-flash` | yes | no | no |
+| Groq / Regolo | no | no | no |
 
 OpenAI extracts text from non-PDF documents; it does **not** include embedded
 images or charts. Convert those files to PDF yourself when visual fidelity
@@ -433,7 +434,7 @@ and Gemini without per-provider variants. Reflect this in your own schemas.
 
 | Setting | Default |
 |---|---|
-| Model | `$DEFAULT_MODEL`, else `deepseek-v4-flash` |
+| Model | `$DEFAULT_MODEL`, else `deepseek-flash` |
 | Reasoning | `$DEFAULT_EFFORT`, else provider default |
 | Max tokens | 4096 |
 | Temperature | provider default |

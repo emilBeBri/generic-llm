@@ -10,9 +10,10 @@ repeated prefix that a one-shot invocation does not have. `pricing.py` reads
 because gllm engineers a hit.
 
 **So a model's cache-hit rate must not enter a gllm cost comparison.** Every
-call bills full input + full output. DeepSeek's cache-hit price is `$0.007/M`
-— roughly 20x below Gemini's — and it is worth exactly nothing here. Quoting
-it as an advantage produced a recommendation the user had to correct.
+call bills full input + full output. DeepSeek's cache-hit price is `$0.003/M`
+since 2026-09-10 (`$0.007/M` when this was written) — orders below Gemini's,
+and worth exactly nothing here. Quoting it as an advantage produced a
+recommendation the user had to correct.
 
 Corollary: **the peak/off-peak swing hits gllm at full weight.** In a
 cache-heavy client a doubled input rate is blunted by the discounted majority
@@ -49,10 +50,15 @@ Two things that decide it, neither visible in a rate table:
   where OpenAI and DeepSeek fold reasoning into `output_tokens`. At $9/M
   output that makes `-r low` on gemini-3.5-flash cost triple its own no-think
   price. This is the same asymmetry `compute_cost` encodes per provider.
-* **deepseek-v4-flash has no `low` rung** — `native_efforts` is
+* **deepseek-v4-flash had no `low` rung** — `native_efforts` was
   `('high', 'max')` (see [[ADR-reasoning-effort-ladder]]). Its cheapest
-  thinking is expensive thinking, so a like-for-like "low effort" comparison
-  flatters it by holding thought-tokens equal when DeepSeek would emit more.
+  thinking was expensive thinking, so a like-for-like "low effort" comparison
+  flattered it by holding thought-tokens equal when DeepSeek would emit more.
+  **No longer true as of 2026-09-10:** V4.1 publishes `low|high|max`, so
+  `-r low` on `deepseek-flash` is a genuine low. Every DeepSeek number in this
+  note predates that and was measured against V4-Flash at the old rates —
+  treat the tables as a historical record, not as current guidance, and re-run
+  `scripts/latency-bench.zsh` before quoting a verdict.
 
 That table is ARITHMETIC ON RATE CARDS, and it understated the real gap by
 3x. See the measured section below — keep the two apart.
