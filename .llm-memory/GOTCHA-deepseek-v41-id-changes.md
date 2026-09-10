@@ -46,14 +46,62 @@ The adapter's blanket "deepseek does not accept file attachments" raise is
 gone; PDFs are still refused everywhere on DeepSeek. Verified live 2026-09-10
 with a generated 64x64 PNG, correctly described.
 
-Cost side, since `--usage` folds image tokens into `input_tokens` with no way
-to tell them apart: every image is resized before inference (up to ~544x544
-scaled UP, anything larger scaled down to ~1300x1300-equivalent), which caps
-one image at **1024 input tokens** — a 2000x2000 and a 5000x5000 image cost
-the same. Each image in a multi-image request counts independently. gllm only
-ever sends the inline base64 path, so the ceiling that applies is the **48 MiB
-request body**; DeepSeek's 32 MiB-per-image and 64 MiB Files-API routes are
-not reachable from here.
+### The resize is a SCALE, never a crop — measured 2026-09-10
+
+The docs describe a pre-inference resize but never say whether an oversized or
+oddly-shaped image loses part of itself. It does not. Two probes through
+`gllm -f`, both fully recovered:
+
+* 2400x2400 with a different colour in each corner and an empty middle — all
+  four corners named correctly, so nothing is centre-cropped.
+* 4000x250 (16:1) with markers at both extreme ends — both ends reported.
+
+Aspect ratio is preserved and the whole frame survives. There is also **no
+tiling** (unlike OpenAI's 512px tiles): one global scale, one token budget.
+
+Token cost follows the pixel count into a clamped band. Measured with an
+identical 32-token text prompt, so subtract that for the image share:
+
+| image | `input_tokens` | image share |
+| --- | --- | --- |
+| none (baseline) | 32 | — |
+| 100x100 | 216 | ~184 |
+| 544x544 | 216 | ~184 |
+| 4000x250 (1.0 MP) | 616 | ~584 |
+| 1300x1300 (1.69 MP) | 1026 | ~994 |
+| 2400x2400 (5.76 MP) | 1026 | ~994 |
+
+So `tokens ≈ 1024 * pixels / 1.69M`, clamped to roughly [184, 1024]. Both
+clamps are load-bearing:
+
+* **Above ~1.69 MP you pay for nothing and see nothing.** A 4K screenshot
+  costs exactly what a 1300x1300 costs, and the extra pixels are discarded
+  before the model ever sees them. Downscale locally — it is free quality-wise
+  and saves the upload.
+* **Below ~544x544 there is a floor**, images are scaled UP and billed for it.
+  A 100x100 icon costs the same as a 544x544. Shrinking past that saves nothing.
+
+The practical consequence is that **detail loss is yours to manage**. One
+global scale means fine text in a dense screenshot is destroyed (3840x2160 →
+~1732x974), and an extreme aspect ratio starves its short axis (6000x500 →
+~4500x375). Nothing is cut off, but nothing is preserved either. Crop to the
+region of interest, or tile into several images — each image gets its OWN
+resize and its own ~1024-token budget, so 4 crops cost ~4x and keep ~4x the
+detail. That is a trade the caller controls; the API will not make it.
+
+At the Flash rate a capped image is ~$0.00015 off-peak, so cost is rarely the
+reason to care — legibility is.
+
+`image_url` also takes a `detail` field (`low` = "downscaled to 512x512",
+`high`/`original`/`auto` = keep). gllm never sends it, so `-f` always gets
+`original`. Note the docs omit the "preserving aspect ratio" qualifier from
+the `detail: low` description that the main resize section carries — whether
+it squashes an oddly-shaped image is genuinely unclear, and untested.
+
+gllm only ever sends the inline base64 path, so the size ceiling that applies
+is the **48 MiB request body** (base64 inflates ~33%, so ~36 MiB of real
+image); DeepSeek's 32 MiB-per-image and 64 MiB Files-API routes are not
+reachable from here. Given the 1.69 MP cap you should never be near it.
 
 ## Also changed, less structurally
 
