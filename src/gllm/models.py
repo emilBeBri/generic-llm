@@ -475,11 +475,17 @@ MODELS: dict[str, ModelSpec] = {
     # 2026-09-10 and DeepSeek serves this name with V4.1-Flash, billed at the
     # Flash rate. Same family as the rows above because it is the same model —
     # so it inherits vision, which the real V4-Flash never had.
-    # `deepseek-v4-flash-vision-exp` was retired the same way and is left
-    # unregistered: it resolves too, but a row for every dead alias is how a
-    # registry starts lying (see ADR-model-listing-live-probe).
     "deepseek-v4-flash": ModelSpec(
         "deepseek-v4-flash", "deepseek", 1_000_000, _DEEPSEEK_VISION,
+        alt_model="deepseek-v4.1-flash", family="deepseek-v4.1-flash",
+    ),
+    # The other retired alias. Registered for the same reason as the row above
+    # and NOT on faith: probed 2026-09-10, it answers 200 and the response
+    # echoes `deepseek-flash`. Without a row it would keep working while
+    # silently losing vision to guessed caps — the one thing the model it
+    # points at is best at.
+    "deepseek-v4-flash-vision-exp": ModelSpec(
+        "deepseek-v4-flash-vision-exp", "deepseek", 1_000_000, _DEEPSEEK_VISION,
         alt_model="deepseek-v4.1-flash", family="deepseek-v4.1-flash",
     ),
     # Being retired: from 04:00 UTC 2026-09-14 every request to this id is

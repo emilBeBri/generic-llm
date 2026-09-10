@@ -33,6 +33,38 @@ reports `request.model`, with the vendor's own string kept beside it as
 (`deepseek-flash`) — the tracker is keyed by vendor id on purpose, and that
 is the join actually performed.
 
+## 1b. Which ids the API actually takes — probed, not assumed
+
+Asserted first, verified 2026-09-10 second, which is the wrong order. The
+results, straight off `POST /chat/completions`:
+
+| sent | status | response `model` |
+| --- | --- | --- |
+| `deepseek-flash` | 200 | `deepseek-flash` |
+| `deepseek-v4-flash` | 200 | `deepseek-flash` |
+| `deepseek-v4-flash-vision-exp` | 200 | `deepseek-flash` |
+| `deepseek-chat` | 200 | `deepseek-flash` |
+| `deepseek-v4-pro` | 200 | `deepseek-v4-pro` |
+| `deepseek-v4.1-flash` | 400 | — |
+| `deepseek-v41-flash` | 400 | — |
+| `deepseek-v4.1-pro` | 400 | — |
+
+So the wire_id split is load-bearing, not stylistic: the explicit key really
+is rejected.
+
+**The 400 message lies by omission.** It reads *"The supported API model names
+are deepseek-flash, deepseek-v4-pro, but you passed X"* — yet three ids that
+answer 200 are absent from that list. It enumerates the CANONICAL names, not
+the accepted ones. Never use that error to decide what an id does; send it.
+
+**The response's `model` field is the honest witness.** Every alias echoes
+back `deepseek-flash`, which is what exposes the reroute — and is exactly why
+`--usage` keeps `model_reported` beside the registry key.
+
+`deepseek-chat` deserves a flag: a pre-V4 name, undocumented in the current
+docs, unlisted in the error, absent from the price book — and very much alive,
+answering as V4.1-Flash. Vendors keep more doors open than they admit.
+
 ## 2. A retired model's id still answers — and is NOT in `/models`
 
 V4-Flash and V4-Flash-Vision-Exp were retired the same day, but
@@ -47,10 +79,14 @@ absent from `--models` may still answer, and a name present in the registry
 may be an alias for something else entirely. Do not "clean up" a registry row
 because the live probe stopped listing it — check whether it still resolves.
 
-`deepseek-v4-flash` is kept as a row, re-pointed at `family="deepseek-v4.1-
-flash"` and given vision, because that is what the id now *is*.
-`deepseek-v4-flash-vision-exp` is deliberately left unregistered: it resolves
-too, and a row for every dead alias is how a registry starts lying.
+Both `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` are kept as rows,
+re-pointed at `family="deepseek-v4.1-flash"` and given vision, because that is
+what those ids now *are*. The vision-exp row was initially left out on the
+argument that a row per dead alias makes a registry lie — reversed once the
+probe showed it answering 200: an unregistered id keeps working but falls to
+guessed caps, so the "clean" registry would have silently refused images to
+the one model best at them. Omitting a live id is not restraint, it is a
+capability regression with no error attached.
 
 ## 3. Vision became a per-model fact on DeepSeek
 
