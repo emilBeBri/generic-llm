@@ -143,7 +143,7 @@ The families below are illustrative orientation, **not** an authoritative list â
 | Anthropic | `claude-opus-4-5/6/7/8`, `claude-sonnet-4-5/6`, `claude-haiku-4-5/6` |
 | OpenAI | `gpt-5{,-mini,-nano,-pro}`, `gpt-5.1`â€“`gpt-5.5`, `gpt-5-codex`, `gpt-4.1{,-mini,-nano}`, `gpt-4o{,-mini}`, `o1/o3/o4-mini` |
 | Gemini | `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-3.1-pro-preview` |
-| DeepSeek | `deepseek-flash` (V4.1, vision), `deepseek-v4-pro` |
+| DeepSeek | `deepseek-v4.1-flash` (vision; wire id `deepseek-flash`), `deepseek-v4-pro` |
 | xAI Grok | `grok-4.3`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, `grok-4.20-multi-agent-0309` |
 | Z.AI / GLM | text: `glm-5.2` (reasoning_effort), `glm-5.1/5/4.7/4.6/4.5`; vision: `glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr` |
 | Moonshot Kimi | `kimi-k3`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, `kimi-k2.6` |
@@ -343,7 +343,7 @@ text-extraction fallback. Pick a model that fits the data.
 | xAI Grok | yes (`input_image`) | no | no |
 | Z.AI / GLM | vision models only (`glm-4.6v`, `glm-4.5v`, `glm-5v-turbo`, `glm-ocr`; `image_url`) | no | no |
 | Moonshot Kimi | yes (`image_url`) | no | no |
-| `deepseek-flash` | yes | no | no |
+| `deepseek-v4.1-flash` | yes | no | no |
 | Groq / Regolo | no | no | no |
 
 OpenAI extracts text from non-PDF documents; it does **not** include embedded
@@ -434,7 +434,7 @@ and Gemini without per-provider variants. Reflect this in your own schemas.
 
 | Setting | Default |
 |---|---|
-| Model | `$DEFAULT_MODEL`, else `deepseek-flash` |
+| Model | `$DEFAULT_MODEL`, else `deepseek-v4.1-flash` |
 | Reasoning | `$DEFAULT_EFFORT`, else provider default |
 | Max tokens | 4096 |
 | Temperature | provider default |

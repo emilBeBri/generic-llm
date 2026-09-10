@@ -166,7 +166,7 @@ def test_images_ride_as_openai_image_url_parts(provider, posted):
     provider.generate(
         Request(
             prompt="hej",
-            model="deepseek-flash",
+            model="deepseek-v4.1-flash",
             attachments=(Attachment(b"x", "image/png", "a.png"),),
         )
     )
@@ -178,7 +178,7 @@ def test_images_ride_as_openai_image_url_parts(provider, posted):
 
 
 def test_a_text_turn_still_sends_a_plain_string(provider, posted):
-    provider.generate(Request(prompt="hej", model="deepseek-flash"))
+    provider.generate(Request(prompt="hej", model="deepseek-v4.1-flash"))
     _, _, body = posted[-1]
     assert body["messages"][-1]["content"] == "hej"
 
@@ -188,7 +188,7 @@ def test_pdfs_are_refused_on_every_deepseek_model(provider, posted):
         provider.generate(
             Request(
                 prompt="hej",
-                model="deepseek-flash",
+                model="deepseek-v4.1-flash",
                 attachments=(Attachment(b"%PDF", "application/pdf", "a.pdf"),),
             )
         )

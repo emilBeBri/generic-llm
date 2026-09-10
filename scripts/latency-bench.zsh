@@ -21,8 +21,8 @@ zmodload zsh/datetime
 RUNS=${RUNS:-3}
 REASONING=${REASONING:-}
 # NOT ${@:-a b} — that expands the default as ONE word and benchmarks a
-# model named "gpt-5.6-luna deepseek-flash".
-if (( $# )); then MODELS=($@); else MODELS=(gpt-5.6-luna deepseek-flash); fi
+# model named "gpt-5.6-luna deepseek-v4.1-flash".
+if (( $# )); then MODELS=($@); else MODELS=(gpt-5.6-luna deepseek-v4.1-flash); fi
 
 command -v gllm >/dev/null || { print -u2 "no gllm on PATH"; exit 1 }
 command -v jq   >/dev/null || { print -u2 "no jq on PATH"; exit 1 }

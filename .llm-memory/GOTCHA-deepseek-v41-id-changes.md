@@ -12,9 +12,26 @@ parses a version out of a model id gets nothing. This cost the sibling repo
 its alert tier (llm-price-tracker's `watch.toml` thresholds a family on the
 first dotted number, found none, and demoted the vendor's flagship to
 background on launch day — see that repo's
-`.llm-memory/alert-tiers-are-not-data-tiers.md`). In gllm the registry key is
-the join key for pricing and `--usage`, so a versionless id is merely ugly,
-not dangerous. Assume the *next* Pro is `deepseek-pro`.
+`.llm-memory/alert-tiers-are-not-data-tiers.md`). Assume the *next* Pro is
+`deepseek-pro`.
+
+**gllm does not adopt the versionless name.** The registry key is
+`deepseek-v4.1-flash` and `wire_id` carries the vendor's `deepseek-flash` —
+the same key/wire split that lets `groq:openai/gpt-oss-120b` exist, used here
+for identity rather than namespacing. User preference, and the reason is
+durable: a key is what you type, what `--usage` writes, and what a log has to
+still be readable as next year, and `deepseek-flash` will silently mean V4.2
+the day they ship it. `deepseek-flash` is kept as a compat row (same caps) so
+an existing script does not quietly fall to guessed caps and lose vision.
+
+That preference forced a related fix: `--usage` reported `response.model`, the
+vendor's echo, so it printed `deepseek-flash` no matter what you typed.
+`models.py` had always documented the KEY as what `--usage` reports, and the
+adapters disagreed among themselves about what `Response.model` holds. It now
+reports `request.model`, with the vendor's own string kept beside it as
+`model_reported` whenever the two differ. `priced_as` still shows the BOOK id
+(`deepseek-flash`) — the tracker is keyed by vendor id on purpose, and that
+is the join actually performed.
 
 ## 2. A retired model's id still answers — and is NOT in `/models`
 

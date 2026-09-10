@@ -41,10 +41,11 @@ from .ports import LLMProvider
 from .providers import DISCOVERABLE_PROVIDERS, PROVIDERS
 from .routing import WORK_PROVIDER_REDIRECTS, effective_model, provider_for
 
-# The same model either way -- `deepseek-v4-flash` is a retired alias that
-# DeepSeek serves with V4.1-Flash -- but the canonical id is the one that
-# will still be listed next year. See GOTCHA-deepseek-v41-id-changes.
-DEFAULT_MODEL = "deepseek-flash"
+# Spelled out on purpose: DeepSeek's own wire id is the versionless
+# `deepseek-flash` (carried by ModelSpec.wire_id), but a default that appears
+# in every log and --usage line should say WHICH model it was. See
+# GOTCHA-deepseek-v41-id-changes.
+DEFAULT_MODEL = "deepseek-v4.1-flash"
 # Config and keys load from this repo's own .env (repo root, beside
 # pyproject.toml), resolved relative to this file so it is found regardless of
 # cwd. cli.py lives at <root>/src/gllm/cli.py, so parents[2] is the repo root.
@@ -901,10 +902,21 @@ def main(argv: list[str] | None = None) -> int:
         ]
         record = {
             "provider": response.provider,
-            "model": response.model,
+            # The REGISTRY KEY, not the vendor's echo. models.py has always
+            # said the key is what --usage reports; reading response.model
+            # broke that on the adapters that pass the vendor string through,
+            # and a log line saying `deepseek-flash` cannot tell you WHICH
+            # Flash answered six months from now. The vendor's own word is
+            # kept beside it whenever it differs.
+            "model": request.model or response.model,
             "reasoning": request.reasoning,
             **usage,
             **pricing.price_report(response.provider, candidates, usage, sent_at),
+            **(
+                {"model_reported": response.model}
+                if response.model and response.model != (request.model or "")
+                else {}
+            ),
             "max_tokens": request.max_tokens,
             # The provider's own word, verbatim, plus gllm's reading of it — a
             # machine consumer should not have to know that Gemini says

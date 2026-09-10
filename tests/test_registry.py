@@ -280,3 +280,15 @@ def test_bundled_price_overrides_do_not_shadow_the_book():
         if entry is not None and entry.standard is not None:
             shadows.append(key)
     assert shadows == [], f"book-covered rows in data/prices.json: {shadows}"
+
+
+def test_deepseek_v41_key_is_explicit_but_the_wire_id_is_the_vendors():
+    """The registry key spells the model out; the wire carries what DeepSeek
+    actually accepts. Sending the key would 400 — `deepseek-v4.1-flash` is not
+    a real DeepSeek id, the versionless `deepseek-flash` is."""
+    spec = MODELS["deepseek-v4.1-flash"]
+    assert spec.wire_id == "deepseek-flash"
+    assert wire_id_for("deepseek-v4.1-flash") == "deepseek-flash"
+    # The compat row is the vendor's own short id, same model, same wire.
+    assert MODELS["deepseek-flash"].wire_id == "deepseek-flash"
+    assert MODELS["deepseek-v4.1-flash"].caps == MODELS["deepseek-flash"].caps

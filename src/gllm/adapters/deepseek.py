@@ -2,9 +2,11 @@
 
 DeepSeek's API is OpenAI-compatible (chat completions) at api.deepseek.com,
 so we POST the chat-completions body straight there via `gllm._http`. Models:
-`deepseek-flash` (V4.1-Flash, the current flagship — note the versionless id)
-and `deepseek-v4-pro`. `deepseek-v4-flash` still resolves but is a retired
-alias served by V4.1-Flash.
+`deepseek-v4.1-flash` (the current flagship) and `deepseek-v4-pro`. The first
+is a registry key that is deliberately NOT the wire id: DeepSeek serves V4.1
+under the versionless `deepseek-flash`, which `ModelSpec.wire_id` carries, so
+what the user types and what --usage logs says which model it was.
+`deepseek-v4-flash` still resolves but is a retired alias served by V4.1.
 
 Thinking: the v4 models reason by default and emit a `reasoning_content`
 field alongside `content`. gllm is one-shot and prints only the final text,
@@ -162,7 +164,7 @@ class DeepSeekProvider(LLMProvider):
         if not supports_image(self.name, request.model):
             raise RuntimeError(
                 f"deepseek model {request.model!r} does not accept images. Use "
-                f"deepseek-flash, which reads them natively."
+                f"deepseek-v4.1-flash, which reads them natively."
             )
         parts: list[dict] = [{"type": "text", "text": request.prompt}]
         parts.extend(_image_part(a) for a in request.attachments)

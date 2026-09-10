@@ -7,7 +7,7 @@ the wrong behaviour when you need to know exactly what reached the provider, so
 `--native-effort` turns the translation off and passes `-r` through verbatim.
 
 The value must then be one the model actually has: `xhigh` is a real rung on
-claude-opus-5 (below `max`) and does not exist at all on deepseek-flash. That
+claude-opus-5 (below `max`) and does not exist at all on deepseek-v4.1-flash. That
 asymmetry is the confusion the flag exists to remove, so it is asserted here.
 """
 
@@ -45,7 +45,7 @@ def test_translated_xhigh_still_becomes_max(monkeypatch, capsys):
     """Without the flag, nothing changes: xhigh -> the model's top rung."""
     _wire(monkeypatch)
 
-    rc = cli.main(["-m", "deepseek-flash", "-r", "xhigh", "prompt"])
+    rc = cli.main(["-m", "deepseek-v4.1-flash", "-r", "xhigh", "prompt"])
 
     assert rc == 0
     # `reasoning` keeps the rung that was ASKED for; `wire_effort` is what is
@@ -59,7 +59,7 @@ def test_translated_mode_rejects_a_native_value_and_names_the_flag(monkeypatch, 
     """`-r max` is not a gllm rung. The error should point at the way to get it."""
     _wire(monkeypatch)
 
-    rc = cli.main(["-m", "deepseek-flash", "-r", "max", "prompt"])
+    rc = cli.main(["-m", "deepseek-v4.1-flash", "-r", "max", "prompt"])
 
     assert rc == 2
     assert _FakeProvider.last_request is None
@@ -73,7 +73,7 @@ def test_translated_mode_rejects_a_native_value_and_names_the_flag(monkeypatch, 
 def test_native_effort_sends_the_value_verbatim(monkeypatch, capsys):
     _wire(monkeypatch)
 
-    rc = cli.main(["-m", "deepseek-flash", "-r", "max", "--native-effort", "prompt"])
+    rc = cli.main(["-m", "deepseek-v4.1-flash", "-r", "max", "--native-effort", "prompt"])
 
     assert rc == 0
     assert _FakeProvider.last_request.wire_effort == "max"
@@ -82,10 +82,10 @@ def test_native_effort_sends_the_value_verbatim(monkeypatch, capsys):
 
 
 def test_native_effort_rejects_a_rung_the_model_lacks(monkeypatch, capsys):
-    """deepseek-flash offers low|high|max — it has no `xhigh` at all."""
+    """deepseek-v4.1-flash offers low|high|max — it has no `xhigh` at all."""
     _wire(monkeypatch)
 
-    rc = cli.main(["-m", "deepseek-flash", "-r", "xhigh", "--native-effort", "prompt"])
+    rc = cli.main(["-m", "deepseek-v4.1-flash", "-r", "xhigh", "--native-effort", "prompt"])
 
     assert rc == 2
     assert _FakeProvider.last_request is None
@@ -109,7 +109,7 @@ def test_native_effort_requires_an_explicit_r(monkeypatch, capsys):
     it to a provider as a native value is the very confusion this flag removes."""
     _wire(monkeypatch, default_effort="high")
 
-    rc = cli.main(["-m", "deepseek-flash", "--native-effort", "prompt"])
+    rc = cli.main(["-m", "deepseek-v4.1-flash", "--native-effort", "prompt"])
 
     assert rc == 2
     assert _FakeProvider.last_request is None

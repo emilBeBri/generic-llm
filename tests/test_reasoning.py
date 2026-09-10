@@ -88,7 +88,7 @@ def test_low_is_never_upgraded():
         ("gpt-5.1", ("low", "medium", "high", "xhigh")),
         # V4.1 added a `low` rung on 2026-09-10; before that `-r low` could
         # only resolve up to `high`. Accepted live on both rows.
-        ("deepseek-flash", ("low", "low", "high", "max")),
+        ("deepseek-v4.1-flash", ("low", "low", "high", "max")),
         ("deepseek-v4-pro", ("low", "low", "high", "max")),
         ("deepseek-v4-flash", ("low", "low", "high", "max")),
         ("grok-4.5", ("low", "medium", "high", "xhigh")),

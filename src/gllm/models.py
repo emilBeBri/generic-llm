@@ -454,29 +454,40 @@ MODELS: dict[str, ModelSpec] = {
     # ----------------------------------------------------------------- #
     # DeepSeek (first-party). Also served third-party — see the host rows.
     # ----------------------------------------------------------------- #
-    # The current flagship, released 2026-09-10. Note the versionless id:
-    # DeepSeek-V4.1-Flash ships as `deepseek-flash`, NOT `deepseek-v4.1-flash`.
+    # The current flagship, released 2026-09-10. DeepSeek ships it under the
+    # VERSIONLESS wire id `deepseek-flash`; the registry key spells the model
+    # out, because a key is what the user types, what --usage reports, and what
+    # a six-month-old log has to still be readable as. `wire_id` carries the
+    # vendor's actual string, so nothing but this row needs to know the two
+    # differ — the same split that lets `groq:openai/gpt-oss-120b` exist.
+    "deepseek-v4.1-flash": ModelSpec(
+        "deepseek-flash", "deepseek", 1_000_000, _DEEPSEEK_VISION,
+        alt_model="deepseek-v4-pro", family="deepseek-v4.1-flash",
+    ),
+    # The vendor's own short id, kept as a compat row so an existing script
+    # keeps its capabilities (an unregistered name still runs, but on guessed
+    # caps — it would silently lose vision). Prefer the explicit key above.
     "deepseek-flash": ModelSpec(
         "deepseek-flash", "deepseek", 1_000_000, _DEEPSEEK_VISION,
         alt_model="deepseek-v4-pro", family="deepseek-v4.1-flash",
     ),
-    # Legacy id, kept because it still RESOLVES: V4-Flash was retired on
+    # Retired id, kept because it still RESOLVES: V4-Flash was retired on
     # 2026-09-10 and DeepSeek serves this name with V4.1-Flash, billed at the
-    # Flash rate. Same family as the row above because it is the same model —
+    # Flash rate. Same family as the rows above because it is the same model —
     # so it inherits vision, which the real V4-Flash never had.
     # `deepseek-v4-flash-vision-exp` was retired the same way and is left
     # unregistered: it resolves too, but a row for every dead alias is how a
     # registry starts lying (see ADR-model-listing-live-probe).
     "deepseek-v4-flash": ModelSpec(
         "deepseek-v4-flash", "deepseek", 1_000_000, _DEEPSEEK_VISION,
-        alt_model="deepseek-flash", family="deepseek-v4.1-flash",
+        alt_model="deepseek-v4.1-flash", family="deepseek-v4.1-flash",
     ),
     # Being retired: from 04:00 UTC 2026-09-14 every request to this id is
     # routed to V4.1-Flash and billed at Flash rates, until V4.1-Pro ships.
     # The row stays accurate until then — no vision, its own price.
     "deepseek-v4-pro": ModelSpec(
         "deepseek-v4-pro", "deepseek", 1_000_000, _DEEPSEEK,
-        alt_model="deepseek-flash", family="deepseek-v4",
+        alt_model="deepseek-v4.1-flash", family="deepseek-v4",
     ),
     # ----------------------------------------------------------------- #
     # xAI Grok. grok-4.3 is the general flagship, grok-4.5 the coding one;

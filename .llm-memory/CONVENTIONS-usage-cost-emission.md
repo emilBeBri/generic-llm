@@ -66,6 +66,14 @@ is inert. The CLI's match candidates are `[response.model, request.model,
 request.wire_model]` — the book is vendor-id-keyed and `Response.model` is the
 registry key on some adapters, the vendor's returned id on others.
 
+That inconsistency is why the emitted **`model` field is `request.model`, the
+registry key**, and never `response.model`. It used to be the latter, which
+made `--usage` print whatever the vendor echoed: with `deepseek-v4.1-flash`
+(key) → `deepseek-flash` (wire), every line claimed the versionless name and
+no log could say which Flash answered. `model_reported` carries the vendor's
+own string when it differs, so nothing is lost. `priced_as` is a third thing
+again — the BOOK id that the join actually hit.
+
 Three separable pieces (the cost half is pure + unit-tested offline):
 - `_book_entry(model, at)` — exact id, then the tracker's UNIQUE dot/dash-folded
   match (`claude-haiku-4-5` ↔ book page-slug `claude-haiku-4.5`); `_load_book`
