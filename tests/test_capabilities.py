@@ -112,7 +112,7 @@ def test_pdf_capability_matrix():
 
     # Grok / DeepSeek / GLM: never (no native document input).
     assert not supports_pdf("grok", "grok-4.3")
-    assert not supports_pdf("deepseek", "deepseek-v4-flash")
+    assert not supports_pdf("deepseek", "deepseek-flash")
     assert not supports_pdf("zai", "glm-4.6v")
     assert not supports_pdf("kimi", "kimi-k3")
 
@@ -134,7 +134,7 @@ def test_non_pdf_documents_are_public_openai_only():
         ("grok", "grok-4.3"),
         ("zai", "glm-5v-turbo"),
         ("kimi", "kimi-k3"),
-        ("deepseek", "deepseek-v4-flash"),
+        ("deepseek", "deepseek-flash"),
     ]:
         assert not supports_attachment(provider, model, docx)
 
@@ -177,7 +177,7 @@ def test_text_generation_filter_keeps_chat_models():
         "gpt-5.5",
         "o3-mini",
         "claude-opus-4-8",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "grok-4.3",
         "gemma-4-31b-it",
         "gpt-4o-search-preview",  # web-search text model, must NOT be hidden
@@ -225,6 +225,6 @@ def test_strict_schema_matrix():
     assert supports_strict_schema("azure_anthropic", "claude-opus-4-8-dev")
 
     # DeepSeek and GLM: json_object only (no native json_schema) — stay refused.
-    assert not supports_strict_schema("deepseek", "deepseek-v4-flash")
+    assert not supports_strict_schema("deepseek", "deepseek-flash")
     assert not supports_strict_schema("zai", "glm-4.6")
     assert not supports_strict_schema("kimi", "kimi-k3")

@@ -46,6 +46,15 @@ The adapter's blanket "deepseek does not accept file attachments" raise is
 gone; PDFs are still refused everywhere on DeepSeek. Verified live 2026-09-10
 with a generated 64x64 PNG, correctly described.
 
+Cost side, since `--usage` folds image tokens into `input_tokens` with no way
+to tell them apart: every image is resized before inference (up to ~544x544
+scaled UP, anything larger scaled down to ~1300x1300-equivalent), which caps
+one image at **1024 input tokens** — a 2000x2000 and a 5000x5000 image cost
+the same. Each image in a multi-image request counts independently. gllm only
+ever sends the inline base64 path, so the ceiling that applies is the **48 MiB
+request body**; DeepSeek's 32 MiB-per-image and 64 MiB Files-API routes are
+not reachable from here.
+
 ## Also changed, less structurally
 
 `reasoning_effort` gained a **`low`** rung (was `high|max`, now `low|high|max`),

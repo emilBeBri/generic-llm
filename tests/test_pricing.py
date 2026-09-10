@@ -242,8 +242,8 @@ def _peak_book():
     return PriceBook(
         updated_at="2026-08-18",
         models={
-            "deepseek-v4-flash": ModelEntry(
-                id="deepseek-v4-flash",
+            "deepseek-flash": ModelEntry(
+                id="deepseek-flash",
                 vendor="deepseek",
                 tiers={STANDARD: Price(
                     input=0.22, output=0.66, cache_read=0.007,
@@ -267,7 +267,7 @@ _BETWEEN_WINDOWS = datetime(2026, 8, 18, 5, 0, tzinfo=UTC)
 
 def test_peak_moment_bills_the_peak_rate(monkeypatch):
     _use_book(monkeypatch, _peak_book())
-    key, entry = pricing._book_entry("deepseek-v4-flash", _IN_WINDOW)
+    key, entry = pricing._book_entry("deepseek-flash", _IN_WINDOW)
     assert entry["input"] == 0.44
     assert entry["output"] == 1.32
     assert entry["input_cached"] == 0.014   # cache hits double too
@@ -276,7 +276,7 @@ def test_peak_moment_bills_the_peak_rate(monkeypatch):
 
 def test_off_peak_moment_bills_the_scalar(monkeypatch):
     _use_book(monkeypatch, _peak_book())
-    _, entry = pricing._book_entry("deepseek-v4-flash", _BETWEEN_WINDOWS)
+    _, entry = pricing._book_entry("deepseek-flash", _BETWEEN_WINDOWS)
     assert entry["input"] == 0.22
     assert entry["price_window"] == "off_peak"
 
@@ -285,7 +285,7 @@ def test_no_moment_prices_off_peak(monkeypatch):
     # The tracker's own default, and the only deterministic answer for a
     # caller that cannot name the moment.
     _use_book(monkeypatch, _peak_book())
-    _, entry = pricing._book_entry("deepseek-v4-flash")
+    _, entry = pricing._book_entry("deepseek-flash")
     assert entry["input"] == 0.22
     assert entry["price_window"] is None
 
@@ -296,12 +296,12 @@ def test_non_utc_moment_is_converted_not_read_hour_for_hour(monkeypatch):
     # here reads hour 3 and silently halves the bill.
     _use_book(monkeypatch, _peak_book())
     shifted = datetime(2026, 8, 18, 3, 0, tzinfo=timezone(timedelta(hours=2)))
-    _, entry = pricing._book_entry("deepseek-v4-flash", shifted)
+    _, entry = pricing._book_entry("deepseek-flash", shifted)
     assert entry["price_window"] == "peak"
 
     # And the reverse: 03:00 UTC read as +02:00 would land outside.
     _, entry = pricing._book_entry(
-        "deepseek-v4-flash",
+        "deepseek-flash",
         datetime(2026, 8, 18, 5, 0, tzinfo=timezone(timedelta(hours=2))),  # 03:00Z
     )
     assert entry["price_window"] == "peak"
@@ -321,8 +321,8 @@ def test_price_report_doubles_and_names_the_window(monkeypatch):
     _use_book(monkeypatch, _peak_book())
     monkeypatch.setattr(pricing, "load_overrides", lambda: {})
 
-    off = pricing.price_report("deepseek", ["deepseek-v4-flash"], _1M, _BETWEEN_WINDOWS)
-    peak = pricing.price_report("deepseek", ["deepseek-v4-flash"], _1M, _IN_WINDOW)
+    off = pricing.price_report("deepseek", ["deepseek-flash"], _1M, _BETWEEN_WINDOWS)
+    peak = pricing.price_report("deepseek", ["deepseek-flash"], _1M, _IN_WINDOW)
 
     assert off["cost_usd"] == round(0.22 + 0.66, 6)
     assert off["price_window"] == "off_peak"
@@ -339,9 +339,9 @@ def test_an_override_flattens_the_hourly_rate_and_says_so(monkeypatch):
     _use_book(monkeypatch, _peak_book())
     monkeypatch.setattr(
         pricing, "load_overrides",
-        lambda: {"deepseek-v4-flash": {"input": 0.22, "output": 0.66}},
+        lambda: {"deepseek-flash": {"input": 0.22, "output": 0.66}},
     )
-    out = pricing.price_report("deepseek", ["deepseek-v4-flash"], _1M, _IN_WINDOW)
+    out = pricing.price_report("deepseek", ["deepseek-flash"], _1M, _IN_WINDOW)
 
     assert out["price_source"] == "override"
     assert out["price_window"] is None
@@ -354,14 +354,14 @@ def test_the_real_book_deepseek_row_reaches_gllm_with_its_windows():
     # the book's own windows — gllm never writes a vendor's clock time down.
     from llm_price_tracker.book import get_entry, load_book
 
-    price = get_entry("deepseek-v4-flash", load_book()).standard
+    price = get_entry("deepseek-flash", load_book()).standard
     if price.peak is None or not price.peak_windows:
         pytest.skip("the committed book publishes no peak window for deepseek")
 
     hour, minute = (int(x) for x in price.peak_windows[0].start.split(":"))
     at = datetime(2026, 8, 18, hour, minute, tzinfo=UTC) + timedelta(minutes=1)
-    _, entry = pricing._book_entry("deepseek-v4-flash", at)
-    _, off = pricing._book_entry("deepseek-v4-flash")
+    _, entry = pricing._book_entry("deepseek-flash", at)
+    _, off = pricing._book_entry("deepseek-flash")
 
     assert entry["price_window"] == "peak"
     assert entry["input"] > off["input"]
@@ -372,7 +372,7 @@ def test_the_real_book_deepseek_row_reaches_gllm_with_its_windows():
 class _FakeDeepSeek:
     def generate(self, request):
         return Response(
-            text="ok", model="deepseek-v4-flash", provider="deepseek",
+            text="ok", model="deepseek-flash", provider="deepseek",
             input_tokens=1_000_000, output_tokens=1_000_000,
         )
 
@@ -393,7 +393,7 @@ def test_usage_record_reports_the_price_window(monkeypatch, capsys):
     monkeypatch.setattr(pricing, "_load_book", lambda: _peak_book())
     monkeypatch.setattr(cli, "datetime", _FrozenClock)
 
-    rc = cli.main(["--usage", "-m", "deepseek-v4-flash", "prompt"])
+    rc = cli.main(["--usage", "-m", "deepseek-flash", "prompt"])
     assert rc == 0
     line = next(
         ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("gllm-usage ")

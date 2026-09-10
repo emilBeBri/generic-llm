@@ -41,6 +41,8 @@ def test_full_bebri_chat_model_set():
         "gemini-3.1-pro-preview": "gemini",
         "gemini-3.5-flash": "gemini",
         "deepseek-v4-pro": "deepseek",
+        # Versionless id, and the retired alias that still resolves.
+        "deepseek-flash": "deepseek",
         "deepseek-v4-flash": "deepseek",
         "grok-4.3": "grok",
         "grok-4.20-multi-agent-0309": "grok",
@@ -95,7 +97,7 @@ def test_work_leaves_non_azure_providers_alone():
     for m in [
         "gemini-3.5-flash",
         "grok-4",
-        "deepseek-v4-flash",
+        "deepseek-flash",
         "glm-5.2",
         "kimi-k3",
     ]:

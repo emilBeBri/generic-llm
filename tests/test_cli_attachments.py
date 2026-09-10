@@ -77,7 +77,7 @@ def test_openai_chat_pdf_reaches_provider(monkeypatch, tmp_path):
         "claude-opus-5",
         "gemini-3.6-flash",
         "grok-4.3",
-        "deepseek-v4-flash",
+        "deepseek-flash",
     ],
 )
 def test_non_pdf_documents_fail_before_dispatch(
