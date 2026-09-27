@@ -158,13 +158,24 @@ Scope: n=4 on one problem type, deliberately superficial. It is enough to
 disqualify a default, not enough to rank luna against deepseek on quality —
 neither was ever wrong here.
 
-Standing verdict for gllm: **gpt-5.6-luna** as `DEFAULT_MODEL` — right for
-free where flash-lite's cheap configuration is not (see the arithmetic section), ~20x cheaper than gemini-3.5-flash, strict `--schema` (DeepSeek has
-none: gllm REFUSES `--schema` there rather than fake enforcement), full effort
-ladder, largest context. deepseek-v4-flash is for off-peak batch work where
-latency does not matter and nothing needs a schema: ~1.8x cheaper than luna
-off-peak, but MORE expensive at peak ($0.44 vs $0.40 per 1k of the measured
-call) and slower in both cases.
+Standing verdict for gllm: **gpt-6-luna** as `DEFAULT_MODEL` — moved off
+`gpt-5.6-luna` on 2026-09-27. Right for free where flash-lite's cheap
+configuration is not, ~20x cheaper than gemini-3.5-flash, strict `--schema`
+(DeepSeek has none: gllm REFUSES `--schema` there rather than fake
+enforcement), full effort ladder, largest context.
+
+**Every number in the arithmetic below is a 5.6-era measurement.** The move
+does not change what the model is, but it halves the card — 0.10 / 0.50 /
+cached 0.01 against 0.20 / 1.20 / 0.02 — so the DeepSeek comparison has to be
+re-run before it is trusted: a claimed ~1.8x off-peak advantage cannot survive
+a 2x cheaper Luna, and the peak-window call ($0.44 vs $0.40 per 1k) was
+already the close one.
+
+**Where that default lives:** the process environment wins, else the repo's
+own `.env` — and *this* repo is the gllm checkout, so the operative value sits
+in a host file that a jailed session sees masked (synthetic or empty). An
+agent can record the verdict here; it cannot read or change the setting
+itself. See [[GOTCHA-renaming-a-registry-row]].
 
 ## Omitting `-r` is NOT "no reasoning" — it is the provider's default
 
