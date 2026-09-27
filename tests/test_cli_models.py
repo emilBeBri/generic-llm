@@ -46,7 +46,7 @@ def test_work_listing_prints_registered_azure_deployments(monkeypatch, capsys):
 
     assert cli._run_models("*", work=True) == 0
     output = capsys.readouterr()
-    assert "azure_openai\tgpt-5.6-sol-dev\n" in output.out
+    assert "azure_openai\tgpt-6-sol-dev\n" in output.out
     assert output.err == ""
 
 
@@ -57,7 +57,7 @@ def test_capability_listing_marks_reasoning_and_default_models(monkeypatch, caps
 
     assert cli._run_models("*", work=True, include_capabilities=True) == 0
     output = capsys.readouterr()
-    assert "azure_openai\tgpt-5.6-sol-dev\treasoning\n" in output.out
+    assert "azure_openai\tgpt-6-sol-dev\treasoning\n" in output.out
     assert "azure_openai\tgpt-4.1-nano-dev\tdefault\n" in output.out
     assert output.err == ""
 

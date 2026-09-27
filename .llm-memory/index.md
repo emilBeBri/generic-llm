@@ -27,6 +27,8 @@ Persistent project knowledge for `generic-llm` (the `gllm` CLI).
 - [GOTCHA-stop-reasons-that-mean-no-answer.md](GOTCHA-stop-reasons-that-mean-no-answer.md) — the three ways a 200 yields output nobody can trust: budget exhausted (warn, keep the text — including Gemini's MAX_TOKENS *enum*, whose str() matches nothing), `refusal` (raise; no text block exists, so gllm otherwise prints a blank line and exits 0), and `pause_turn`, which is unhandled. Plus the full Anthropic stop_reason enum. Two of the three were found by reading bebri-chat, not by testing.
 - [ADR-model-listing-live-probe.md](ADR-model-listing-live-probe.md) — there is NO model allowlist (adapters forward the name verbatim, so hand-maintained catalogs drift and lie — `gemini-3-flash-preview` was wrongly called "retired"); `gllm --models [PROVIDER]` queries only configured providers and prints greppable text-gen `provider<TAB>key` rows. WORK substitutes Foundry for direct Anthropic/OpenAI; Azure uses explicit registered `-dev` deployments because its inference APIs cannot enumerate deployments.
 
+- [GOTCHA-renaming-a-registry-row.md](GOTCHA-renaming-a-registry-row.md) — a model bump touches five surfaces together: the `MODELS` key + `wire_id`, the `-dev` row behind `azure_alias`, every OTHER row's `alt_model` pointing at it, and the `data/prices.json` overlay row keyed by the same registry key (test-enforced). Rates do NOT travel with the key — recompute them from the new model, or the deployment keeps the old card. Worked example: gpt-5.6-luna -> gpt-6-luna, 2026-09-27.
+
 ## Ideas / future features
 - [IDEAS-key-loading-secret-managers.md](IDEAS-key-loading-secret-managers.md) — `--keys-from pass:...` / sops / keyring integration. Not built in v1.
 

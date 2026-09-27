@@ -8,7 +8,7 @@
 #   ./latency-bench.zsh                                  # 3 runs, luna vs ds-flash
 #   RUNS=7 ./latency-bench.zsh                           # more samples
 #   REASONING=low ./latency-bench.zsh                    # with thinking on
-#   ./latency-bench.zsh gpt-5.6-luna gemini-3.5-flash    # pick your own
+#   ./latency-bench.zsh gpt-6-luna gemini-3.5-flash      # pick your own
 #
 # DeepSeek's rate depends on the clock, so the table reports the price_window
 # gllm itself resolved — you never have to remember whether you ran it in a
@@ -21,8 +21,8 @@ zmodload zsh/datetime
 RUNS=${RUNS:-3}
 REASONING=${REASONING:-}
 # NOT ${@:-a b} — that expands the default as ONE word and benchmarks a
-# model named "gpt-5.6-luna deepseek-v4.1-flash".
-if (( $# )); then MODELS=($@); else MODELS=(gpt-5.6-luna deepseek-v4.1-flash); fi
+# model named "gpt-6-luna deepseek-v4.1-flash".
+if (( $# )); then MODELS=($@); else MODELS=(gpt-6-luna deepseek-v4.1-flash); fi
 
 command -v gllm >/dev/null || { print -u2 "no gllm on PATH"; exit 1 }
 command -v jq   >/dev/null || { print -u2 "no jq on PATH"; exit 1 }

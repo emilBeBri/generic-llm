@@ -57,9 +57,9 @@ def test_full_bebri_chat_model_set():
         "kimi-k2.7-code-highspeed": "kimi",
         "kimi-k2.6": "kimi",
         "gpt-5.4-pro-dev": "azure_openai",
-        "gpt-5.6-sol-dev": "azure_openai",
+        "gpt-6-sol-dev": "azure_openai",
         "gpt-5.6-terra-dev": "azure_openai",
-        "gpt-5.6-luna-dev": "azure_openai",
+        "gpt-6-luna-dev": "azure_openai",
         "claude-opus-4-8-dev": "azure_anthropic",
         "claude-opus-5-dev": "azure_anthropic",
         "claude-sonnet-5-dev": "azure_anthropic",
@@ -81,9 +81,9 @@ def test_work_appends_dev_to_anthropic_and_openai():
     assert effective_model("claude-opus-5", True) == "claude-opus-5-dev"
     assert effective_model("claude-sonnet-5", True) == "claude-sonnet-5-dev"
     assert effective_model("gpt-5.1", True) == "gpt-5.1-dev"
-    assert effective_model("gpt-5.6", True) == "gpt-5.6-sol-dev"
+    assert effective_model("gpt-5.6", True) == "gpt-6-sol-dev"
     assert effective_model("gpt-5.6-terra", True) == "gpt-5.6-terra-dev"
-    assert effective_model("gpt-5.6-luna", True) == "gpt-5.6-luna-dev"
+    assert effective_model("gpt-6-luna", True) == "gpt-6-luna-dev"
     assert effective_model("o3-mini", True) == "o3-mini-dev"
     # ...and the redirected name then routes to the Azure adapter.
     assert provider_for(effective_model("claude-opus-4-8", True)) == "azure_anthropic"

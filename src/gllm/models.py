@@ -288,23 +288,25 @@ MODELS: dict[str, ModelSpec] = {
     # ----------------------------------------------------------------- #
     # OpenAI
     # ----------------------------------------------------------------- #
-    # GPT-5.6 is the only line with the `max` effort rung. `gpt-5.6` is the
-    # public alias of `gpt-5.6-sol`.
+    # The `max` effort rung: the GPT-5.6 line and the GPT-6 pair (docs list
+    # none|low|medium|high|xhigh|max). `gpt-5.6` is the public alias of the
+    # 5.6-line sol; under WORK it runs on the GPT-6 Sol deployment, since no
+    # 5.6-line Azure row survives the move to the 6 line.
     "gpt-5.6": ModelSpec(
         "gpt-5.6", "openai", 1_050_000, _GPT5_MAX,
-        azure_alias="gpt-5.6-sol-dev", alt_model="gpt-5.6-terra",
+        azure_alias="gpt-6-sol-dev", alt_model="gpt-5.6-terra",
     ),
-    "gpt-5.6-sol": ModelSpec(
-        "gpt-5.6-sol", "openai", 1_050_000, _GPT5_MAX,
-        azure_alias="gpt-5.6-sol-dev", alt_model="gpt-5.6-terra",
+    "gpt-6-sol": ModelSpec(
+        "gpt-6-sol", "openai", 1_050_000, _GPT5_MAX,
+        azure_alias="gpt-6-sol-dev", alt_model="gpt-6-luna",
     ),
     "gpt-5.6-terra": ModelSpec(
         "gpt-5.6-terra", "openai", 1_050_000, _GPT5_MAX,
-        azure_alias="gpt-5.6-terra-dev", alt_model="gpt-5.6-luna",
+        azure_alias="gpt-5.6-terra-dev", alt_model="gpt-6-luna",
     ),
-    "gpt-5.6-luna": ModelSpec(
-        "gpt-5.6-luna", "openai", 1_050_000, _GPT5_MAX,
-        azure_alias="gpt-5.6-luna-dev", alt_model="gpt-5.6-terra",
+    "gpt-6-luna": ModelSpec(
+        "gpt-6-luna", "openai", 1_050_000, _GPT5_MAX,
+        azure_alias="gpt-6-luna-dev", alt_model="gpt-6-sol",
     ),
     # The docs publish only the <272K price tier for the 5.4/5.5 line and omit
     # their maximum context windows. Stay conservative at the largest fully
@@ -314,17 +316,17 @@ MODELS: dict[str, ModelSpec] = {
         azure_alias="gpt-5.5-dev", alt_model="gpt-5.6-terra",
     ),
     "gpt-5.5-pro": ModelSpec(
-        "gpt-5.5-pro", "openai", 272_000, _GPT5, alt_model="gpt-5.6-sol"
+        "gpt-5.5-pro", "openai", 272_000, _GPT5, alt_model="gpt-6-sol"
     ),
     "gpt-5.4": ModelSpec(
         "gpt-5.4", "openai", 272_000, _GPT5, alt_model="gpt-5.6-terra"
     ),
     "gpt-5.4-pro": ModelSpec(
         "gpt-5.4-pro", "openai", 272_000, _GPT5,
-        azure_alias="gpt-5.4-pro-dev", alt_model="gpt-5.6-sol",
+        azure_alias="gpt-5.4-pro-dev", alt_model="gpt-6-sol",
     ),
     "gpt-5.4-mini": ModelSpec(
-        "gpt-5.4-mini", "openai", 272_000, _GPT5, alt_model="gpt-5.6-luna"
+        "gpt-5.4-mini", "openai", 272_000, _GPT5, alt_model="gpt-6-luna"
     ),
     "gpt-5.4-nano": ModelSpec(
         "gpt-5.4-nano", "openai", 272_000, _GPT5, alt_model="gpt-5.4-mini"
@@ -696,17 +698,17 @@ MODELS: dict[str, ModelSpec] = {
         "claude-opus-4-5-dev", "azure_anthropic", 200_000, _CLAUDE_BUDGET, max_output=64_000),
     "claude-haiku-4-5-dev": ModelSpec(
         "claude-haiku-4-5-dev", "azure_anthropic", 200_000, _CLAUDE_BUDGET, max_output=64_000),
-    "gpt-5.6-sol-dev": ModelSpec(
-        "gpt-5.6-sol-dev", "azure_openai", 1_050_000, _GPT5_MAX,
-        alt_model="gpt-5.6-terra-dev",
+    "gpt-6-sol-dev": ModelSpec(
+        "gpt-6-sol-dev", "azure_openai", 1_050_000, _GPT5_MAX,
+        alt_model="gpt-6-luna-dev",
     ),
     "gpt-5.6-terra-dev": ModelSpec(
         "gpt-5.6-terra-dev", "azure_openai", 1_050_000, _GPT5_MAX,
-        alt_model="gpt-5.6-luna-dev",
+        alt_model="gpt-6-luna-dev",
     ),
-    "gpt-5.6-luna-dev": ModelSpec(
-        "gpt-5.6-luna-dev", "azure_openai", 1_050_000, _GPT5_MAX,
-        alt_model="gpt-5.6-terra-dev",
+    "gpt-6-luna-dev": ModelSpec(
+        "gpt-6-luna-dev", "azure_openai", 1_050_000, _GPT5_MAX,
+        alt_model="gpt-6-sol-dev",
     ),
     "gpt-5.5-dev": ModelSpec(
         "gpt-5.5-dev", "azure_openai", 1_000_000, _GPT5, alt_model="gpt-5.1-dev"
