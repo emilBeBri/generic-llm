@@ -9,7 +9,7 @@ llms/
 
 # Scratch / editor state (ephemeral, never committed)
 tmp.zsh
-vim-quickfiles.txt
+vim-quickfiles.md
 
 # gllm call log (GLLM_CALL_LOG). Defaults to $XDG_STATE_HOME/gllm/calls.jsonl,
 # i.e. outside the repo entirely — this only catches the case where the
