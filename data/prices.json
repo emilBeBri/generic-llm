@@ -5,7 +5,7 @@
     "output": 2.2,
     "input_cached": 0.11
   },
-  "_source": "Gap rows verified against ~/source-docs and regolo.ai/pricing, 2026-07-29. Book-covered rows removed 2026-08-01 (mechanically: every key llm_price_tracker.get_entry resolves). Second sweep 2026-08-18 after the tracker gained zai and moonshot sources: 13 more rows removed (kimi-k3 + twelve glm-*), every one bit-identical to the book. One carried prose the book has no field for — glm-4-32b-0414-128k is documented by Z.AI as having no prompt caching, which costs nothing here: it reports no cached tokens, so the input-rate fallback never prices any.",
+  "_source": "Gap rows verified against ~/source-docs and regolo.ai/pricing, 2026-07-29. Book-covered rows removed 2026-08-01 (mechanically: every key llm_price_tracker.get_entry resolves). Second sweep 2026-08-18 after the tracker gained zai and moonshot sources: 13 more rows removed (kimi-k3 + twelve glm-*), every one bit-identical to the book. One carried prose the book has no field for — glm-4-32b-0414-128k is documented by Z.AI as having no prompt caching, which costs nothing here: it reports no cached tokens, so the input-rate fallback never prices any. Third sweep 2026-10-19, after the tracker's moonshot source was repaired and began reading the K2 tables: kimi-k2.6, kimi-k2.7-code and kimi-k2.7-code-highspeed, bit-identical to the book. The highspeed row carried the one line of prose the book lacks — same weights as kimi-k2.7-code at 2x price, buying output speed only.",
   "claude-fable-5-dev": {
     "input": 10.0,
     "output": 50.0,
@@ -134,22 +134,6 @@
     "output": 10.0,
     "input_cached": 0.2,
     "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
-  },
-  "kimi-k2.6": {
-    "input": 0.95,
-    "output": 4.0,
-    "input_cached": 0.16
-  },
-  "kimi-k2.7-code": {
-    "input": 0.95,
-    "output": 4.0,
-    "input_cached": 0.19
-  },
-  "kimi-k2.7-code-highspeed": {
-    "input": 1.9,
-    "output": 8.0,
-    "input_cached": 0.38,
-    "note": "Same weights as kimi-k2.7-code at 2x price; buys output speed only."
   },
   "grok-4.20-0309-non-reasoning": {
     "input": 1.25,
