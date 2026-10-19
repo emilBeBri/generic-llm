@@ -34,7 +34,9 @@ it, while 3.5/3.6 accept it. bebri-chat had to add per-model caps rows to stop
 its picker offering `minimal` (its
 `.llm-memory/gemini-per-model-thinking-level-vocabulary.md`); gllm needs no
 equivalent split, and one shared `_GEMINI` preset stays correct for every row
-including 3.8.
+including 3.8. The 4.x row (`gemini-4-argon`, registered 2026-10-19) inherits
+it unchanged for the same reason: its thinkingLevel vocabulary is
+low/medium/high, so there is no `minimal` for the ladder to emit.
 
 ## The blocker if we do migrate
 

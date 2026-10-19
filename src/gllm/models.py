@@ -397,6 +397,26 @@ MODELS: dict[str, ModelSpec] = {
     # ----------------------------------------------------------------- #
     # Google Gemini
     # ----------------------------------------------------------------- #
+    # The 2026-10 flagship (model page: `Stable`). 1,048,576 is a UNIFIED
+    # input+thinking+output window — the 65,536 here is the documented per-hop
+    # output ceiling, which a long decode can push past only with
+    # max_output_tokens > 65,536. Live API, explicit caching and image
+    # generation are not offered on it.
+    #
+    # `_GEMINI` covers it for the same reason it covers 3.8-flash: the effort
+    # ladder has no `minimal` rung, and `minimal` is the one value the newer
+    # Gemini rows reject outright. Its own thinkingLevel vocabulary is
+    # low/medium/high, and the adapter is on Google's legacy `thinkingBudget`
+    # parameter for every Gemini row anyway — a gllm-wide gap tracked in
+    # .llm-memory/GOTCHA-gemini-thinking-budget-is-the-legacy-path, not a
+    # difference between this row and its 3.x siblings. UNVERIFIED live: no
+    # Gemini key is reachable from the jail, so this row is sourced from the
+    # model page like every other one.
+    "gemini-4-argon": ModelSpec(
+        "gemini-4-argon", "gemini", 1_048_576, _GEMINI,
+        alt_model="gemini-3.8-flash",
+        max_output=65_536,
+    ),
     "gemini-3.8-flash": ModelSpec(
         "gemini-3.8-flash", "gemini", 1_048_576, _GEMINI,
         alt_model="gemini-3.7-flash",
