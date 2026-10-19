@@ -300,6 +300,23 @@ MODELS: dict[str, ModelSpec] = {
         "gpt-6-sol", "openai", 1_050_000, _GPT5_MAX,
         azure_alias="gpt-6-sol-dev", alt_model="gpt-6-luna",
     ),
+    # The 6.1 refresh of sol: same window, same effort vocabulary, same price
+    # class in the book (2.00/10.00), so its fallback is sol itself — the same
+    # edge the reference registry draws.
+    "gpt-6.1-sol": ModelSpec(
+        "gpt-6.1-sol", "openai", 1_050_000, _GPT5_MAX, alt_model="gpt-6-sol",
+    ),
+    # The 6-line top end (10.00/50.00 in the book, 5x sol) and the only row in
+    # this block with no registered -dev deployment: WORK therefore falls back
+    # to `gpt-6-astra-dev` with the documented warning, which is better than
+    # inventing an Azure deployment name. The reference points this row's
+    # fallback at `gpt-5.6-sol`; that id left this registry when the 5.6
+    # luna/sol rows became the 6 line (2026-09-27), so the edge lands on the
+    # 6-line sol — same class, still a large step down in price, which the
+    # remap announcement on stderr makes visible.
+    "gpt-6-astra": ModelSpec(
+        "gpt-6-astra", "openai", 1_050_000, _GPT5_MAX, alt_model="gpt-6-sol",
+    ),
     "gpt-5.6-terra": ModelSpec(
         "gpt-5.6-terra", "openai", 1_050_000, _GPT5_MAX,
         azure_alias="gpt-5.6-terra-dev", alt_model="gpt-6-luna",

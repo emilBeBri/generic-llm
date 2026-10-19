@@ -65,3 +65,25 @@ resolves to `gpt-6-sol-dev`, so under WORK a `gpt-5.6` call runs on the 6-Sol
 deployment. That is a deliberate substitution and gllm announces the effective
 model on stderr rather than hiding it; if a 5.6-line deployment comes back on
 Foundry, this one line is what changes back.
+
+## The other direction: porting a row whose fallback target is gone (2026-10-19)
+
+`gpt-6-astra` and `gpt-6.1-sol` were added from the reference registry, and the
+rename above is exactly why one of them could not be copied. The reference
+points astra's `alt_model` at `gpt-5.6-sol`; that key left this registry in the
+2026-09-27 sweep, so copied verbatim the edge would dangle and
+`tests/test_registry.py` would fail. The rule from the sol/luna case settles
+it: alt edges stay inside the generation, so both rows fall back to
+`gpt-6-sol`. Astra's step down (10/50 -> 2/10) is large, which is why the
+remap announcement matters — a fallback is a failure path, not a silent
+downgrade.
+
+`gpt-6.1-sol` is a MID-generation refresh, not a bump: 6.1 keeps sol's 2/10
+card and 1,050,000 window, so it is a sibling row with its own key, and no
+existing row's edges move. Only a change to the *model behind a key* is a
+rename; a new version number alongside the old one is a new row.
+
+Neither row got an `azure_alias`: no `-dev` deployment is registered for
+either, and `WORK=1` therefore resolves `<key>-dev` with the documented
+warning. Inventing a deployment name is the one thing worse than the warning,
+because it fails only at request time.
