@@ -83,7 +83,18 @@ card and 1,050,000 window, so it is a sibling row with its own key, and no
 existing row's edges move. Only a change to the *model behind a key* is a
 rename; a new version number alongside the old one is a new row.
 
-Neither row got an `azure_alias`: no `-dev` deployment is registered for
-either, and `WORK=1` therefore resolves `<key>-dev` with the documented
+Initially neither row got an `azure_alias`: no `-dev` deployment was registered
+for either, and `WORK=1` therefore resolved `<key>-dev` with the documented
 warning. Inventing a deployment name is the one thing worse than the warning,
 because it fails only at request time.
+
+## Registering the 6.1 Sol deployment (2026-10-21)
+
+The user supplied `gpt-6.1-sol-dev` as the Azure deployment name. It now has
+an explicit `azure_openai` row matching the public model's window and
+capabilities, with `alt_model="gpt-6-sol-dev"`, and the public row points at
+it through `azure_alias`. Its price overlay follows the matching public
+model's 2/10/0.2 card until a Foundry-specific rate is documented, as for
+`gpt-6-sol-dev`. Both explicit `-m gpt-6.1-sol-dev` and WORK redirection now
+route without name guesses; Azure model listings include it. Astra still has
+no registered deployment or `azure_alias`.

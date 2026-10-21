@@ -135,6 +135,12 @@
     "input_cached": 0.2,
     "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
   },
+  "gpt-6.1-sol-dev": {
+    "input": 2.0,
+    "output": 10.0,
+    "input_cached": 0.2,
+    "note": "Azure Foundry deployment; priced from the matching public model until a Foundry-specific rate is documented."
+  },
   "grok-4.20-0309-non-reasoning": {
     "input": 1.25,
     "output": 2.5,

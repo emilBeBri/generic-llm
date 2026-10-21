@@ -19,6 +19,13 @@ def test_gpt_5_5_dev_routes_to_azure_openai():
     assert provider_for("gpt-5.5-dev") == "azure_openai"
 
 
+def test_gpt_6_1_sol_azure_routes_without_guessing(capsys):
+    assert effective_model("gpt-6.1-sol", True) == "gpt-6.1-sol-dev"
+    assert provider_for("gpt-6.1-sol-dev") == "azure_openai"
+    assert effective_model("gpt-6.1-sol-dev", True) == "gpt-6.1-sol-dev"
+    assert capsys.readouterr().err == ""
+
+
 def test_full_bebri_chat_model_set():
     cases = {
         "claude-opus-4-5": "anthropic",

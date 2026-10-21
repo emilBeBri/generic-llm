@@ -304,7 +304,8 @@ MODELS: dict[str, ModelSpec] = {
     # class in the book (2.00/10.00), so its fallback is sol itself — the same
     # edge the reference registry draws.
     "gpt-6.1-sol": ModelSpec(
-        "gpt-6.1-sol", "openai", 1_050_000, _GPT5_MAX, alt_model="gpt-6-sol",
+        "gpt-6.1-sol", "openai", 1_050_000, _GPT5_MAX,
+        azure_alias="gpt-6.1-sol-dev", alt_model="gpt-6-sol",
     ),
     # The 6-line top end (10.00/50.00 in the book, 5x sol) and the only row in
     # this block with no registered -dev deployment: WORK therefore falls back
@@ -738,6 +739,10 @@ MODELS: dict[str, ModelSpec] = {
     "gpt-6-sol-dev": ModelSpec(
         "gpt-6-sol-dev", "azure_openai", 1_050_000, _GPT5_MAX,
         alt_model="gpt-6-luna-dev",
+    ),
+    "gpt-6.1-sol-dev": ModelSpec(
+        "gpt-6.1-sol-dev", "azure_openai", 1_050_000, _GPT5_MAX,
+        alt_model="gpt-6-sol-dev",
     ),
     "gpt-5.6-terra-dev": ModelSpec(
         "gpt-5.6-terra-dev", "azure_openai", 1_050_000, _GPT5_MAX,
