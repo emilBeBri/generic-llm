@@ -88,6 +88,15 @@ class ModelSpec(NamedTuple):
 # The split that matters is the thinking interface: 4.6+ REQUIRE
 # thinking.type=adaptive and reject enabled+budget_tokens; 4.5 and older are the
 # reverse. Effort vocabulary per platform.claude.com/docs/en/build_with_claude/effort.
+#
+# The whole 5.x generation (Fable 5 / 5.1, Opus 5 / 5.5, Sonnet 5 / 5.5,
+# Haiku 5.5) takes the FULL five-rung ladder — low through max, `xhigh`
+# included — so one preset covers all of them; only 4.6 and earlier differ
+# (no `xhigh` on the 4.6 pair, budget shape on 4.5 and older). Fable and Opus
+# 5.5 keep adaptive thinking always on: Claude Opus 5.5 rejects
+# thinking.type=disabled at every effort level, so there is no "no thinking"
+# rung to model. `claude-mythos-5-1` is documented as the SAME model as Fable
+# 5.1 behind a verification gate, so it gets no row.
 _CLAUDE_ADAPTIVE_XHIGH = ModelCaps(
     native_efforts=("low", "medium", "high", "xhigh", "max"),
     thinking_dialect="anthropic_adaptive",
@@ -235,6 +244,30 @@ MODELS: dict[str, ModelSpec] = {
     # ----------------------------------------------------------------- #
     # Anthropic
     # ----------------------------------------------------------------- #
+    # Current lineup (platform.claude.com/docs/en/about-claude/models/overview,
+    # read 2026-10-25): Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5 — all 1M
+    # context, 128K synchronous output. Everything below them is legacy but
+    # still served, so the rows stay.
+    "claude-fable-5-1": ModelSpec(
+        "claude-fable-5-1", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
+        alt_model="claude-opus-5-5",
+        max_output=128_000,
+    ),
+    "claude-opus-5-5": ModelSpec(
+        "claude-opus-5-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
+        alt_model="claude-sonnet-5-5",
+        max_output=128_000,
+    ),
+    "claude-sonnet-5-5": ModelSpec(
+        "claude-sonnet-5-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
+        alt_model="claude-opus-5-5",
+        max_output=128_000,
+    ),
+    "claude-haiku-5-5": ModelSpec(
+        "claude-haiku-5-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
+        alt_model="claude-sonnet-5-5",
+        max_output=128_000,
+    ),
     "claude-fable-5": ModelSpec(
         "claude-fable-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
         azure_alias="claude-fable-5-dev", alt_model="claude-opus-5",

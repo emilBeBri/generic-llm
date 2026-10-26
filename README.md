@@ -140,7 +140,7 @@ The families below are illustrative orientation, **not** an authoritative list â
 
 | Provider | Models (examples) |
 |---|---|
-| Anthropic | `claude-opus-4-5/6/7/8`, `claude-sonnet-4-5/6`, `claude-haiku-4-5/6` |
+| Anthropic | `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`; legacy `claude-opus-5`, `claude-sonnet-5`, `claude-opus-4-5/6/7/8`, `claude-sonnet-4-5/6`, `claude-haiku-4-5` |
 | OpenAI | `gpt-5{,-mini,-nano,-pro}`, `gpt-5.1`â€“`gpt-5.5`, `gpt-5-codex`, `gpt-4.1{,-mini,-nano}`, `gpt-4o{,-mini}`, `o1/o3/o4-mini` |
 | Gemini | `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3-pro-preview`, `gemini-3.1-pro-preview` |
 | DeepSeek | `deepseek-v4.1-flash` (vision; wire id `deepseek-flash`), `deepseek-v4-pro` |
