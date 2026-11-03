@@ -250,12 +250,12 @@ MODELS: dict[str, ModelSpec] = {
     # still served, so the rows stay.
     "claude-fable-5-1": ModelSpec(
         "claude-fable-5-1", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
-        alt_model="claude-opus-5-5",
+        azure_alias="claude-fable-5-1-dev", alt_model="claude-opus-5-5",
         max_output=128_000,
     ),
     "claude-opus-5-5": ModelSpec(
         "claude-opus-5-5", "anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
-        alt_model="claude-sonnet-5-5",
+        azure_alias="claude-opus-5-5-dev", alt_model="claude-sonnet-5-5",
         max_output=128_000,
     ),
     "claude-sonnet-5-5": ModelSpec(
@@ -340,16 +340,19 @@ MODELS: dict[str, ModelSpec] = {
         "gpt-6.1-sol", "openai", 1_050_000, _GPT5_MAX,
         azure_alias="gpt-6.1-sol-dev", alt_model="gpt-6-sol",
     ),
-    # The 6-line top end (10.00/50.00 in the book, 5x sol) and the only row in
-    # this block with no registered -dev deployment: WORK therefore falls back
-    # to `gpt-6-astra-dev` with the documented warning, which is better than
-    # inventing an Azure deployment name. The reference points this row's
+    # The 6-line top end (10.00/50.00 in the book, 5x sol). Its `gpt-6-astra-dev`
+    # deployment is registered below. The reference points this row's
     # fallback at `gpt-5.6-sol`; that id left this registry when the 5.6
     # luna/sol rows became the 6 line (2026-09-27), so the edge lands on the
     # 6-line sol — same class, still a large step down in price, which the
     # remap announcement on stderr makes visible.
     "gpt-6-astra": ModelSpec(
-        "gpt-6-astra", "openai", 1_050_000, _GPT5_MAX, alt_model="gpt-6-sol",
+        "gpt-6-astra", "openai", 1_050_000, _GPT5_MAX,
+        azure_alias="gpt-6-astra-dev", alt_model="gpt-6-sol",
+    ),
+    "gpt-6.1-terra": ModelSpec(
+        "gpt-6.1-terra", "openai", 1_050_000, _GPT5_MAX,
+        azure_alias="gpt-6.1-terra-dev", alt_model="gpt-6-luna",
     ),
     "gpt-5.6-terra": ModelSpec(
         "gpt-5.6-terra", "openai", 1_050_000, _GPT5_MAX,
@@ -744,6 +747,16 @@ MODELS: dict[str, ModelSpec] = {
     # -dev name directly. Deployment inventory is LIVE DATA: a public model
     # existing says nothing about a deployment existing.
     # ----------------------------------------------------------------- #
+    "claude-fable-5-1-dev": ModelSpec(
+        "claude-fable-5-1-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
+        alt_model="claude-opus-5-5-dev",
+        max_output=128_000,
+    ),
+    "claude-opus-5-5-dev": ModelSpec(
+        "claude-opus-5-5-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH,
+        alt_model="claude-sonnet-5-dev",
+        max_output=128_000,
+    ),
     "claude-fable-5-dev": ModelSpec(
         "claude-fable-5-dev", "azure_anthropic", 1_000_000, _CLAUDE_ADAPTIVE_XHIGH, max_output=128_000),
     "claude-opus-5-dev": ModelSpec(
@@ -776,6 +789,14 @@ MODELS: dict[str, ModelSpec] = {
     "gpt-6.1-sol-dev": ModelSpec(
         "gpt-6.1-sol-dev", "azure_openai", 1_050_000, _GPT5_MAX,
         alt_model="gpt-6-sol-dev",
+    ),
+    "gpt-6.1-terra-dev": ModelSpec(
+        "gpt-6.1-terra-dev", "azure_openai", 1_050_000, _GPT5_MAX,
+        alt_model="gpt-6.1-sol-dev",
+    ),
+    "gpt-6-astra-dev": ModelSpec(
+        "gpt-6-astra-dev", "azure_openai", 1_050_000, _GPT5_MAX,
+        alt_model="gpt-6.1-sol-dev",
     ),
     "gpt-5.6-terra-dev": ModelSpec(
         "gpt-5.6-terra-dev", "azure_openai", 1_050_000, _GPT5_MAX,
