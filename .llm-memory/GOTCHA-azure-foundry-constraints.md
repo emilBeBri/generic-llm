@@ -37,8 +37,10 @@ Mistral docs specify Chat Completions and the `low`/`medium`/`high`
 `reasoning_effort` values; GLLM's model caps select the chat surface and the
 compat effort dialect. Its content may interleave thinking and text chunks:
 GLLM emits only the answer text and retains the original response as `raw`.
-The Azure deployment itself has not been live-probed; the forwarding shape is
-covered by mocked tests and the official Mistral documentation.
+A 2026-11-14 live probe of this exact deployment returned Azure 404
+`DeploymentNotFound`; `gpt-6.1-terra-dev` succeeded on the same brokered
+endpoint. The Mistral deployment name or resource still needs confirmation;
+model-specific forwarding remains verified only by mocked tests and docs.
 
 ## Related
 - [[CONVENTIONS-multi-provider-routing]] — how `-dev` models route to these adapters in the first place.
@@ -46,3 +48,4 @@ covered by mocked tests and the official Mistral documentation.
 # sources
 
 Mistral Large 4 chat and reasoning documentation — uid: d5de07e4c70f
+Azure Mistral deployment and same-resource control probes — uid: d5de07e4c70f
