@@ -281,6 +281,8 @@ class OpenAIProvider(LLMProvider):
         }
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
+        if request.reasoning is not None:
+            kwargs["reasoning_effort"] = request.wire_effort
 
         if request.schema is not None:
             kwargs["response_format"] = {
@@ -298,7 +300,16 @@ class OpenAIProvider(LLMProvider):
             post_json(f"{self.base_url}/chat/completions", self.headers, kwargs)
         )
 
-        text = getattr(resp.choices[0].message, "content", None) or ""
+        content = getattr(resp.choices[0].message, "content", None) or ""
+        if isinstance(content, list):
+            # Mistral returns thinking and text chunks; stdout is the answer only.
+            text = "".join(
+                getattr(chunk, "text", "") or ""
+                for chunk in content
+                if getattr(chunk, "type", None) == "text"
+            )
+        else:
+            text = content
 
         return Response(
             text=text,

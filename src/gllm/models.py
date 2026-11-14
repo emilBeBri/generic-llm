@@ -77,6 +77,9 @@ class ModelSpec(NamedTuple):
     # and one guessed too low truncates. Unsourced rows fall back to
     # `reasoning.REASONING_MIN_OUTPUT` / `DEFAULT_MAX_OUTPUT` in the CLI.
     max_output: int | None = None
+    # Vendor price-book ID when a deployment's wire name differs. A public
+    # vendor rate for an Azure deployment is an estimate, not an Azure quote.
+    pricing_id: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -131,6 +134,15 @@ _GPT4_CHAT = ModelCaps(
     api_surface="chat",
     supports_vision=True,
     supports_pdf=True,
+    supports_strict_schema=True,
+)
+
+# Mistral Large 4: Chat Completions, a bare reasoning_effort, and image input.
+_MISTRAL_LARGE4 = ModelCaps(
+    api_surface="chat",
+    native_efforts=("low", "medium", "high"),
+    thinking_dialect="compat_effort",
+    supports_vision=True,
     supports_strict_schema=True,
 )
 
@@ -821,6 +833,11 @@ MODELS: dict[str, ModelSpec] = {
         "gpt-4.1-nano-dev", "azure_openai", 128_000, _GPT4_CHAT
     ),
     "o3-dev": ModelSpec("o3-dev", "azure_openai", 128_000, _O_SERIES),
+    # Foundry deployment name; the tracker keeps Mistral's own API ID.
+    "mistral-large4-latest-dev": ModelSpec(
+        "mistral-large4-latest-dev", "azure_openai", 1_000_000, _MISTRAL_LARGE4,
+        family="mistral-large-4", pricing_id="mistral-large-4",
+    ),
 }
 
 

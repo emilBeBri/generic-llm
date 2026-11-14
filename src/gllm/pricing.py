@@ -48,10 +48,10 @@ def _load_book():
 def _book_entry(model: str, at: datetime | None = None) -> tuple[str, dict] | None:
     """(book id, entry dict) for a model, or None.
 
-    The tracker's get_entry does exact-id first, then a UNIQUE dot/dash-folded
-    match (book Anthropic ids are page slugs like `claude-opus-4.6`; gllm keys
-    are wire-style `claude-opus-4-6`). Namespaced keys (`groq:`, `regolo:`)
-    can never resolve here — they are priced by the override layer.
+    An explicit ModelSpec.pricing_id maps a deployment onto a published vendor
+    ID; otherwise the model key is used. The tracker's get_entry does exact-id
+    first, then a UNIQUE dot/dash-folded match. Namespaced keys without an
+    explicit pricing ID remain priced by the override layer.
 
     `at` is the UTC instant the call was made. Some vendors charge by time of
     day — DeepSeek doubles input, output AND cache-hit inside published peak
@@ -76,7 +76,11 @@ def _book_entry(model: str, at: datetime | None = None) -> tuple[str, dict] | No
         return None
     from llm_price_tracker.book import get_entry
 
-    entry = get_entry(model.strip(), _load_book())
+    from .models import spec_for
+
+    spec = spec_for(model)
+    price_id = spec.pricing_id if spec is not None and spec.pricing_id else model.strip()
+    entry = get_entry(price_id, _load_book())
     if entry is None or entry.standard is None:
         return None
     p = entry.standard

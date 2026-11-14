@@ -1,4 +1,5 @@
 # `--usage`: machine-readable token/cost emission, normalised per provider
+tags = #convention #pricing #usage #gllm
 
 `gllm --usage` prints ONE JSON object to **stderr**, prefixed `gllm-usage `,
 after the call. stdout stays the model text only (callers parse stdout as the
@@ -75,7 +76,8 @@ own string when it differs, so nothing is lost. `priced_as` is a third thing
 again — the BOOK id that the join actually hit.
 
 Three separable pieces (the cost half is pure + unit-tested offline):
-- `_book_entry(model, at)` — exact id, then the tracker's UNIQUE dot/dash-folded
+- `_book_entry(model, at)` — explicit `ModelSpec.pricing_id` when present,
+  otherwise the model ID, then the tracker's UNIQUE dot/dash-folded
   match (`claude-haiku-4-5` ↔ book page-slug `claude-haiku-4.5`); `_load_book`
   is the monkeypatch seam. Ambiguous fold → no match (null, never a wrong price).
   `at` picks the time-of-day rate — see below.
@@ -85,6 +87,13 @@ Three separable pieces (the cost half is pure + unit-tested offline):
   the backstop for overrides); Gemini bills thoughts ON TOP of output (add
   `reasoning_tokens`); OpenAI-family/DeepSeek/GLM fold cache into prompt and
   reasoning into output (subtract cache_read, don't add reasoning).
+
+## Deployment price IDs
+
+`mistral-large4-latest-dev` is an Azure Foundry deployment name; its explicit
+`pricing_id` is Mistral's canonical `mistral-large-4` tracker row. `priced_as`
+reports that vendor ID, and the user override still wins. The public Mistral
+rate is a reference estimate for Azure, not a verified Azure billing quote.
 
 ## Time-of-day rates: `price_window`, stamped at DISPATCH
 
@@ -156,3 +165,7 @@ lie about the price. bebri-chat runs the identical layer and hit the identical
 Related: [[ADR-reasoning-effort-ladder]] (the `reasoning` level echoed in the
 record), [[CONVENTIONS-zai-glm-adapter]] (GLM uses the chat mapper, and has no
 feed price).
+
+# sources
+
+Mistral Large 4 deployment pricing alias — uid: d5de07e4c70f

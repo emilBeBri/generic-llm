@@ -182,6 +182,12 @@ def test_dialect_matches_provider():
         dialect = spec.caps.thinking_dialect
         if dialect is None:
             continue
+        if (
+            spec.provider == "azure_openai"
+            and spec.caps.api_surface == "chat"
+            and dialect == "compat_effort"
+        ):
+            continue
         assert dialect.startswith(prefix_by_provider[spec.provider]), f"{key}: {dialect}"
 
 
@@ -192,10 +198,13 @@ def test_api_surface_only_on_openai_family():
             assert spec.provider in _OPENAI_FAMILY, key
 
 
-def test_chat_surface_models_have_files_but_no_reasoning():
-    """OpenAI Chat has file content parts but no reasoning control."""
+def test_legacy_openai_chat_models_have_files_but_no_reasoning():
+    """GPT-3.5/4 chat models have file parts but no reasoning control."""
     for key, spec in MODELS.items():
-        if spec.caps.api_surface == "chat":
+        if (
+            spec.caps.api_surface == "chat"
+            and spec.wire_id.lower().startswith(("gpt-3.5", "gpt-4"))
+        ):
             assert spec.caps.supports_pdf, key
             assert not spec.caps.native_efforts, key
 

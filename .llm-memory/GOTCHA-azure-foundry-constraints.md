@@ -1,4 +1,5 @@
 # Gotcha: Azure Foundry adapter constraints & WORK mode
+tags = #gotcha #architecture-decision-record #environment #mistral
 
 Things the two Azure Foundry adapters (`azure_openai.py`, `azure_anthropic.py`) have to work around that the direct providers don't. Ported from bebri-chat on 2026-05-25.
 
@@ -29,5 +30,19 @@ So `azure_anthropic.py` now handles `output_config` like the direct adapter: sen
 
 **Implemented semantic:** `routing.effective_model(model, work)` — under `WORK=1` a *direct* Anthropic/OpenAI model name gets `-dev` appended (`claude-opus-4-8` → `claude-opus-4-8-dev`), so `provider_for` then routes it to the Azure adapter and the `-dev` string is the deployment name sent to Foundry. Already-`-dev` names, `WORK=0`, and non-Azure providers (Gemini/Grok/DeepSeek) pass through unchanged; an explicit `-dev` name still selects Azure regardless of `WORK`. `cli.main` applies `effective_model` right after resolving `-m`, so the Request, routing, capability gates and verbose log all see the effective name. The redirect set is `routing._AZURE_REDIRECTABLE = {"anthropic", "openai"}` (the only two direct providers with a Foundry counterpart).
 
+## Mistral Large 4 uses Chat Completions
+
+`mistral-large4-latest-dev` is an Azure deployment of Mistral Large 4. The
+Mistral docs specify Chat Completions and the `low`/`medium`/`high`
+`reasoning_effort` values; GLLM's model caps select the chat surface and the
+compat effort dialect. Its content may interleave thinking and text chunks:
+GLLM emits only the answer text and retains the original response as `raw`.
+The Azure deployment itself has not been live-probed; the forwarding shape is
+covered by mocked tests and the official Mistral documentation.
+
 ## Related
 - [[CONVENTIONS-multi-provider-routing]] — how `-dev` models route to these adapters in the first place.
+
+# sources
+
+Mistral Large 4 chat and reasoning documentation — uid: d5de07e4c70f
