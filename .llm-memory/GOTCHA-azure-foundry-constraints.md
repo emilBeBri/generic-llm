@@ -32,15 +32,19 @@ So `azure_anthropic.py` now handles `output_config` like the direct adapter: sen
 
 ## Mistral Large 4 uses Chat Completions
 
-`mistral-large4-latest-dev` is an Azure deployment of Mistral Large 4. The
+`mistral-large-4-latest-dev` is the Azure deployment name confirmed by its Foundry Consume sample. The
 Mistral docs specify Chat Completions and the `low`/`medium`/`high`
 `reasoning_effort` values; GLLM's model caps select the chat surface and the
 compat effort dialect. Its content may interleave thinking and text chunks:
 GLLM emits only the answer text and retains the original response as `raw`.
-A 2026-11-14 live probe of this exact deployment returned Azure 404
-`DeploymentNotFound`; `gpt-6.1-terra-dev` succeeded on the same brokered
-endpoint. The Mistral deployment name or resource still needs confirmation;
-model-specific forwarding remains verified only by mocked tests and docs.
+The 2026-11-14 probe used the original misspelling `mistral-large4-latest-dev`
+and returned Azure 404 `DeploymentNotFound`; a GPT control succeeded.
+On 2026-11-16 the Consume sample supplied the correct hyphenated name and
+https://al-agents-aif.services.ai.azure.com/openai/v1. After correcting the
+registry/wire ID, a bounded live Chat Completions request with low effort
+returned `OK`; the response model was `mistral-large-4-latest`. Existing
+endpoint handling worked without configuration changes. This verifies basic
+text inference; other capabilities remain covered by unit tests.
 
 ## Related
 - [[CONVENTIONS-multi-provider-routing]] — how `-dev` models route to these adapters in the first place.
@@ -49,3 +53,4 @@ model-specific forwarding remains verified only by mocked tests and docs.
 
 Mistral Large 4 chat and reasoning documentation — uid: d5de07e4c70f
 Azure Mistral deployment and same-resource control probes — uid: d5de07e4c70f
+2026-11-16 Foundry Consume sample and successful corrected-name live probe — uid: d5de07e4c70f

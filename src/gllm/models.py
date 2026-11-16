@@ -834,8 +834,8 @@ MODELS: dict[str, ModelSpec] = {
     ),
     "o3-dev": ModelSpec("o3-dev", "azure_openai", 128_000, _O_SERIES),
     # Foundry deployment name; the tracker keeps Mistral's own API ID.
-    "mistral-large4-latest-dev": ModelSpec(
-        "mistral-large4-latest-dev", "azure_openai", 1_000_000, _MISTRAL_LARGE4,
+    "mistral-large-4-latest-dev": ModelSpec(
+        "mistral-large-4-latest-dev", "azure_openai", 1_000_000, _MISTRAL_LARGE4,
         family="mistral-large-4", pricing_id="mistral-large-4",
     ),
 }

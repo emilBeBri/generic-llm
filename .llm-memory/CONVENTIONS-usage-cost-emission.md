@@ -90,7 +90,7 @@ Three separable pieces (the cost half is pure + unit-tested offline):
 
 ## Deployment price IDs
 
-`mistral-large4-latest-dev` is an Azure Foundry deployment name; its explicit
+`mistral-large-4-latest-dev` is an Azure Foundry deployment name; its explicit
 `pricing_id` is Mistral's canonical `mistral-large-4` tracker row. `priced_as`
 reports that vendor ID, and the user override still wins. The public Mistral
 rate is a reference estimate for Azure, not a verified Azure billing quote.

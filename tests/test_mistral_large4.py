@@ -8,7 +8,7 @@ from gllm.models import MODELS
 from gllm.routing import effective_model, provider_for
 
 
-MODEL = 'mistral-large4-latest-dev'
+MODEL = 'mistral-large-4-latest-dev'
 
 
 def test_mistral_large4_dev_is_an_azure_chat_model():
